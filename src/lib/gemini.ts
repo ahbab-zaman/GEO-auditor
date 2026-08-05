@@ -1,6 +1,29 @@
 const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 const MODEL = "gemini-2.0-flash";
 
+export function normalizeHostname(hostname: string): string {
+  return hostname.replace(/^www\./, "").toLowerCase();
+}
+
+// Google's grounding URIs are sometimes `vertexaisearch.cloud.google.com` redirect
+// links rather than the source URL. HEAD-follow them (with an in-memory cache per
+// run — the same source recurs across queries) so citations store real domains.
+export async function resolveCitationUrl(
+  uri: string,
+  cache: Map<string, string>,
+): Promise<string> {
+  const cached = cache.get(uri);
+  if (cached) return cached;
+
+  let finalUrl = uri;
+  try {
+    const response = await fetch(uri, { method: "HEAD", redirect: "follow" });
+    finalUrl = response.url;
+  } catch {}
+  cache.set(uri, finalUrl);
+  return finalUrl;
+}
+
 export type GroundedResult = {
   answerText: string;
   citedUrls: string[];

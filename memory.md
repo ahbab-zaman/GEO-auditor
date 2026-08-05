@@ -1,41 +1,48 @@
-# Memory — Phase 3 (Features 04 + 05)
+# Memory — Phase 4 (Pillar B) Complete
 
 Last updated: 2026-08-05
 
 ## What was built
 
-- `src/lib/robots.ts` (new) — `fetchRobotsTxt(origin)` (8s abort, GEOAuditorBot UA; non-OK/timeout → null) + `parseAiCrawlerText` (per-`User-agent` block parsing for `GPTBot`, `ClaudeBot`, `PerplexityBot`, `Google-Extended`, `CCBot`; only `Disallow: /` counts as a block; `User-agent: *` `Disallow: /` → blockedAll).
-- `src/lib/pipeline/structuralAnswerability.ts` — now has two checkers: `checkAiCrawlerAccess(robotsTxt)` and `checkSchemaPresence(pages)`, plus `runStructuralAnswerability(origin, pages)` pillar builder. Schema detection handles JSON-LD arrays, `@graph`, string/array `@type`, and a curated `LOCAL_BUSINESS_SUBTYPES` set (exact matches only, avoids `BusinessEvent`-style false positives).
-- `src/lib/pipeline/runAudit.ts` — real structural pillar (04 + 05) replaces the mock; passes `scrapedPages` into the pillar builder.
-- `src/lib/pipeline/mocks.ts` — split into `getMockLiveAiCitation` + `getMockThirdPartyCorroboration`; the structural mock was deleted outright (no dead mock path remains, per code-structure.md).
-- `src/lib/pipeline/fixes.ts` — added `schema-presence` copy-paste `<script type="application/ld+json">` block.
-- `context/progress-tracker.md` — Phase 3 now 2 of 4 features done; Next = 06 Direct-Answer Clarity.
+- `src/lib/pipeline/liveAiCitation.ts` — **Pillar B fully real**:
+  - `runLiveAiCitation(businessName, url, pages)` — generates queries, runs them grounded, scores all three checks.
+  - `generateQueries` (geminiJson, temp 0.3, zod `QueryGenerationSchema`) — 2 category + 2 direct queries; category/location inferred from scraped homepage excerpt; falls back to 4 template queries on malformed/too-few output.
+  - Each query → `geminiGroundedQuery` in a **sequential `for`+`await` loop** (never Promise.all — free-tier rate limit). Per-query failure logged and skipped; all-fail → pillar `unavailable`.
+  - `brand-recall` (/15): fraction of category answers mentioning businessName (substring, case-insensitive) → scaled.
+  - `domain-citation-rate` (/20): fraction of queries whose resolved citations include the business's own normalized domain → scaled.
+  - `description-accuracy` (/10): per mentioned query, `gradeDescriptionAccuracy` (geminiJson, temp 0, zod `DescriptionAccuracySchema`) comparing answer vs homepage → average → 10/5/0; brand never mentioned → 0 critical; all grades fail → check `unavailable`.
+  - Evidence: `citations` per check (query + verbatim answerText + resolved citedUrls + businessCited).
+- `src/lib/gemini.ts` — added `normalizeHostname(hostname)` (strip www + lowercase) and `resolveCitationUrl(uri, cache)` (HEAD + follow redirects, in-memory cache Map, raw-URI fallback on failure).
+- `src/schemas/audit.ts` — added `DescriptionAccuracySchema` ({ consistent: boolean, contradictions: string[] }).
+- `src/lib/pipeline/runAudit.ts` — Pillar B now real: `await runLiveAiCitation(...)` replaces `getMockLiveAiCitation`.
+- `src/lib/pipeline/mocks.ts` — `getMockLiveAiCitation` deleted outright; only `getMockThirdPartyCorroboration` remains (Pillar C).
 
 ## Decisions made
 
-- Feature 04 scoring: missing robots.txt → 10/10 pass (`absence` evidence); some bots blocked → 5; all blocked (`*` `Disallow: /`) → 0. Evidence is the exact matching robots.txt lines as `code`.
-- Feature 05 scoring: schema complete (`name` + `description` populated) → 10 pass; present-but-sparse → 5 warning; absent → 0 critical with `absence` note carrying the recommended LocalBusiness snippet.
-- `checkSchemaPresence` scans **all** scraped pages (homepage + About/FAQ), not just the homepage — a business-identity block on an About page still counts.
-- Followed library-docs.md robots parser pattern verbatim, extended to also return the relevant block lines for evidence. One deliberate choice: only `Disallow: /` is treated as blocking; `Allow: /` overriding a `Disallow: /` in the same block is not handled (matches the documented pattern, real-world rare).
+- Citation URLs stored as **resolved final URLs** (HEAD-followed), not raw `vertexaisearch.cloud.google.com` redirects — EvidenceBlock renders clean domain pills.
+- Description accuracy graded per mentioned query, averaged, then tiered 10/≥0.99, 5/≥0.5, 0 otherwise. No mentioned query → 0 critical ("absent"), matching build-plan's "materially wrong or absent".
+- Accuracy grading loop also sequential (JSON-mode calls still eat quota).
+- Query-gen fallback category queries embed the business name ("best {name} service near me") — a fallback, never a primary path; beats failing the pillar.
 
 ## Problems solved
 
-- Feature 04 parser verified against 10 fixtures; Feature 05 schema checker against 11 fixtures (arrays, `@graph`, sparse, empty name/desc, multi-page source, `BusinessEvent` false-positive guard). All pass.
-- Reviewer-style pass on both features found no functional bugs. Minor cleanup applied for 04: removed the now-dead structural mock from `mocks.ts`.
-- No UI components built → `/imprint` no-op for both features.
+- Phase 4 verified against **6 stubbed-fetch fixtures** in `C:\Users\DELL\AppData\Local\Temp\opencode\live-ai-test.mjs` (full pass 45, partial scaling, template fallback, all-grounded-fail unavailable, brand-absent critical, grade-fail unavailable) — all pass. Run with: `node --loader file:///C:/Users/DELL/AppData/Local/Temp/opencode/alias-loader.mjs --experimental-strip-types ...\live-ai-test.mjs`.
+- Node TS alias loader on Windows: `--loader` + file URL works; `--import` needed a `register()` call which Node 22.18 rejects. Use the plain `--loader file:///...` form.
+- First build failed with a stale `.next` cache `/_document` error — cleared `.next`, clean build green.
 
 ## Current state
 
-- Phases 1–2 and Phase 3 features 04 + 05 complete. Pillars B (live AI citation) and C (third-party) still mock via `getMockLiveAiCitation`/`getMockThirdPartyCorroboration`.
-- The 1800ms `analyzing` sleep in `runAudit` stays until all four structural checkers (04–07) are real.
+- **Phases 1–4 complete.** Pillars A (35) + B (45) are 100% real. Pillar C (Third-Party, 20) still mocked via `getMockThirdPartyCorroboration`.
 - lint + build green on `main`.
+- No UI built this session → `/imprint` no-op for Phase 4.
+- `.env.local` has a real `GEMINI_API_KEY` set (live calls possible).
 
 ## Next session starts with
 
-- **Feature 06 — Direct-Answer Clarity Check**: take homepage `rawTextExcerpt`, send to Gemini (plain JSON mode, no grounding) with the library-docs.md rubric prompt; model returns `{ hasDirectAnswer, extractedSentence, reasoning }`; deterministic scoring in code (10 binary / 0); `quote` evidence. Requires `lib/gemini.ts` (`geminiJson` per library-docs.md) + zod schema (library-docs zod section). Wire into `runStructuralAnswerability(origin, pages)` — note it will need the homepage text, so the signature may grow.
-- Then 07 FAQ Presence (FAQPage schema OR question-style headings).
-- Also still pending: live E2E smoke test of the full flow on a real site (a normal `npm run dev` + browser, no raw terminal commands).
+- **Phase 5 — Feature 11 Third-Party Corroboration**: build `lib/pipeline/thirdPartyCorroboration.ts` — one grounded query "What do people say about [businessName] ([url])? Cite your sources.", parse+resolve `citedUrls` (reuse `normalizeHostname`/`resolveCitationUrl` + shared cache), filter out the business's own domain, count distinct external domains → 20 if 3+, 10 if 1–2, 0 if none; `citations` evidence. Then replace the Pillar C mock in `runAudit`.
+- Then Phase 6 (12 verdict, 13 score aggregation — mostly done, 14 fixes polish), Phase 7 (UI real-data pass + PDF), Phase 8 (3–5 real businesses + README + demo).
+- **Still pending:** live E2E smoke test on a real site (now that Pillar B is real, run once with real Gemini to see real citations).
 
 ## Open questions
 
-- None blocking. `gemini-2.0-flash` model name/endpoint should be re-verified against Google's docs when Feature 06 lands, per library-docs.md.
+- None blocking. Per library-docs.md, re-verify the `gemini-2.0-flash` model/endpoint against Google's docs when the live Gemini path is exercised.

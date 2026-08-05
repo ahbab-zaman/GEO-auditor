@@ -19,6 +19,11 @@ export const QueryGenerationSchema = z.object({
 
 export const VerdictSchema = z.object({ verdict: z.string().min(1) });
 
+export const DescriptionAccuracySchema = z.object({
+  consistent: z.boolean(),
+  contradictions: z.array(z.string()),
+});
+
 export const GroundedResultSchema = z.object({
   answerText: z.string(),
   citedUrls: z.array(z.string()),

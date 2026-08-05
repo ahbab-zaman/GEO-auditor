@@ -3,9 +3,10 @@ import type { Audit, AuditStatus, PillarResult, ScrapedPage } from "@/types/audi
 import { getAudit, saveAudit } from "@/lib/storage";
 import { computeScore } from "@/lib/pipeline/score";
 import { deriveFixes } from "@/lib/pipeline/fixes";
-import { getMockLiveAiCitation, getMockThirdPartyCorroboration } from "@/lib/pipeline/mocks";
+import { getMockThirdPartyCorroboration } from "@/lib/pipeline/mocks";
 import { scrapeSite } from "@/lib/pipeline/scrape";
 import { runStructuralAnswerability } from "@/lib/pipeline/structuralAnswerability";
+import { runLiveAiCitation } from "@/lib/pipeline/liveAiCitation";
 
 export async function createAudit(url: string, businessName: string): Promise<Audit> {
   const audit: Audit = {
@@ -90,7 +91,11 @@ export async function runAudit(id: string): Promise<void> {
       new URL(analyzing.url).origin,
       analyzing.scrapedPages,
     );
-    const liveAiCitation = getMockLiveAiCitation(analyzing.businessName, analyzing.url);
+    const liveAiCitation = await runLiveAiCitation(
+      analyzing.businessName,
+      analyzing.url,
+      analyzing.scrapedPages,
+    );
     const thirdPartyCorroboration = getMockThirdPartyCorroboration();
 
     const pillars = [structuralAnswerability, liveAiCitation, thirdPartyCorroboration];

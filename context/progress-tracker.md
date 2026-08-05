@@ -7,9 +7,9 @@ is done, what is in progress, and what is next.
 
 ## Current Status
 
-**Phase:** Phase 3 — Structural Answerability (COMPLETE — 04–07 done)
-**Last completed:** 07 FAQ Presence Check
-**Next:** Phase 4 — 08 Gemini Client (lib/gemini.ts already stubbed; wire `geminiGroundedQuery`)
+**Phase:** Phase 4 — Live AI Citation Test (COMPLETE — 08–10 done)
+**Last completed:** 10 Brand Recall + Citation Rate + Accuracy Scoring
+**Next:** Phase 5 — 11 Third-Party Corroboration (replace the Pillar C mock)
 
 ---
 
@@ -69,9 +69,20 @@ is done, what is in progress, and what is next.
 
 ### Phase 4 — Live AI Citation Test (Pillar B)
 
-- [ ] 08 Gemini Client
-- [ ] 09 Query Generation + Execution
-- [ ] 10 Brand Recall + Citation Rate + Accuracy Scoring
+- [x] 08 Gemini Client
+  - [x] `lib/gemini.ts` — `geminiJson` + `geminiGroundedQuery` already existed (feature-03 era); added `normalizeHostname(hostname)` and cache-backed `resolveCitationUrl(uri, cache)` (HEAD + follow redirects; falls back to raw URI hostname on failure) per library-docs.md
+- [x] 09 Query Generation + Execution
+  - [x] `lib/pipeline/liveAiCitation.ts` — `runLiveAiCitation(businessName, url, pages)`:
+  - [x] `generateQueries` (geminiJson, temp 0.3, zod `QueryGenerationSchema`; falls back to 4 template queries if malformed/<3) — category + direct mix, category/location inferred from scraped homepage text
+  - [x] Each query run via `geminiGroundedQuery` in a sequential `for`+`await` loop (never Promise.all — free-tier rate limit); redirect citation URLs resolved to real URLs via the shared `resolveCitationUrl` cache; per-query failure logged and skipped, never crashes the run
+  - [x] All queries failing → pillar `status: unavailable` with a human-readable reason; query-generation failure → template fallback keeps the pillar running
+- [x] 10 Brand Recall + Citation Rate + Accuracy Scoring
+  - [x] `brand-recall` (/15): fraction of category queries whose `answerText` mentions the business name → scaled
+  - [x] `domain-citation-rate` (/20): fraction of all queries whose resolved citations include the business's own normalized domain → scaled
+  - [x] `description-accuracy` (/10): per mentioned query, geminiJson grade (zod `DescriptionAccuracySchema`) comparing answer vs homepage text → average → 10/5/0; brand never mentioned → 0 critical ("absent"); all grades fail → check `unavailable`
+  - [x] Evidence: `citations` type per check (query + verbatim answerText + resolved citedUrls + businessCited)
+  - [x] Verified against 6 stubbed-fetch fixtures (full pass 45, partial scaling, template fallback, all-grounded-fail unavailable, brand-absent critical, grade-fail unavailable) — all pass
+- [x] **Phase 4 complete — Pillar B (Live AI Citation Test) is fully real.** `getMockLiveAiCitation` deleted from `mocks.ts`; `runAudit` now calls `runLiveAiCitation`. Only Pillar C remains mocked (`getMockThirdPartyCorroboration`).
 
 ### Phase 5 — Third-Party Corroboration (Pillar C)
 
