@@ -40,9 +40,16 @@ export function FixCard({ fix }: { fix: Fix }) {
           effort: {fix.effort}
         </span>
       </div>
-      <p className="mt-3 text-sm leading-6 text-text-secondary">{fix.explanation}</p>
+      <ul className="mt-3 space-y-2 text-sm leading-6 text-text-secondary">
+        <li>
+          <span className="font-semibold text-text-primary">Explanation:</span> {fix.explanation}
+        </li>
+      </ul>
       {fix.copyPasteContent && (
         <div className="mt-3 rounded-lg bg-code-bg px-4 py-3">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">
+            Copy-paste block
+          </p>
           <pre className="overflow-x-auto whitespace-pre-wrap font-mono text-sm text-code-text">
             {fix.copyPasteContent}
           </pre>

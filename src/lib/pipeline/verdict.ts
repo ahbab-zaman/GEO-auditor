@@ -1,6 +1,7 @@
 import type { PillarResult } from "@/types/audit";
 import { geminiJson } from "@/lib/gemini";
 import { VerdictSchema } from "@/schemas/audit";
+import { formatPublicUnavailableReason } from "@/lib/pipeline/reportPresentation";
 import { z } from "zod";
 
 type FindingsSummary = {
@@ -17,10 +18,11 @@ function buildSummary(businessName: string, pillars: PillarResult[]): FindingsSu
     label: p.label,
     pointsEarned: p.pointsEarned,
     pointsPossible: p.pointsPossible,
+    status: p.status,
     finding:
       p.status === "complete"
         ? p.checks.map((c) => c.finding).join(" ")
-        : `Could not be checked: ${p.unavailableReason ?? "unknown reason"}`,
+        : `Could not be checked: ${formatPublicUnavailableReason(p.unavailableReason)}`,
   }));
   return { businessName, totalScore, totalPossible, pillarFindings };
 }
@@ -36,7 +38,7 @@ business owner with no technical background. No jargon. State the core problem o
 and make it specific to this actual business and score — never a generic "you scored low" line even if
 every pillar scored near zero. Say what is missing now, or what is already working.
 
-Audit summary: ${JSON.stringify(summary)}
+Audit summary (JSON): ${JSON.stringify(summary)}
 
 Return JSON exactly matching: { "verdict": string }`;
 

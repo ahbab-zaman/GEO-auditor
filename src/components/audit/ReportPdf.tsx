@@ -2,6 +2,11 @@ import React from "react";
 import { Document, Page, Text, View, StyleSheet } from "@react-pdf/renderer";
 import type { Audit, CheckResult, Fix, PillarResult } from "@/types/audit";
 import { getSeverityColor } from "@/lib/utils";
+import {
+  formatPublicUnavailableReason,
+  summarizeFixes,
+  summarizePillars,
+} from "@/lib/pipeline/reportPresentation";
 
 const styles = StyleSheet.create({
   page: {
@@ -11,6 +16,17 @@ const styles = StyleSheet.create({
     color: "#12141c",
   },
   docTitle: { fontSize: 12, fontWeight: 700, color: "#9498a8" },
+  summaryCard: {
+    marginTop: 18,
+    borderWidth: 1,
+    borderColor: "#e5e7f0",
+    borderRadius: 8,
+    backgroundColor: "#f7f8fc",
+    padding: 12,
+  },
+  summaryTitle: { fontSize: 12, fontWeight: 700, color: "#12141c" },
+  summaryList: { marginTop: 8 },
+  summaryItem: { fontSize: 10, color: "#565b6e", marginTop: 3 },
   businessTitle: { fontSize: 24, fontWeight: 700, color: "#12141c", marginTop: 12 },
   businessUrl: { fontSize: 11, color: "#9498a8", marginTop: 2 },
   verdict: {
@@ -41,6 +57,7 @@ const styles = StyleSheet.create({
   sectionHeading: { fontSize: 14, fontWeight: 700, color: "#12141c", marginTop: 24, marginBottom: 4 },
   subHeading: { fontSize: 12, fontWeight: 600, color: "#12141c", marginTop: 14 },
   text: { fontSize: 10, color: "#565b6e", marginTop: 2 },
+  bulletText: { fontSize: 10, color: "#565b6e", marginTop: 2 },
   finding: { marginTop: 12 },
   findingRow: { flexDirection: "row", alignItems: "center" },
   findingTitle: { fontSize: 11, fontWeight: 600, color: "#12141c" },
@@ -120,15 +137,16 @@ function EvidenceBlock({
   if (evidence.type === "quote") {
     return (
       <View style={styles.evidence}>
-        <Text style={styles.evidenceLabel}>Source: {evidence.source}</Text>
-        <Text style={styles.evidenceText}>{evidence.text}</Text>
+        <Text style={styles.evidenceLabel}>- Source: {evidence.source}</Text>
+        <Text style={styles.evidenceText}>- Quote: {evidence.text}</Text>
       </View>
     );
   }
   if (evidence.type === "code") {
     return (
       <View style={styles.evidence}>
-        <Text style={styles.evidenceLabel}>Source: {evidence.source}</Text>
+        <Text style={styles.evidenceLabel}>- Source: {evidence.source}</Text>
+        <Text style={styles.codeText}>- Snippet:</Text>
         <Text style={styles.codeText}>{evidence.snippet}</Text>
       </View>
     );
@@ -136,8 +154,8 @@ function EvidenceBlock({
   if (evidence.type === "absence") {
     return (
       <View style={styles.evidence}>
-        <Text style={styles.evidenceLabel}>Source: {evidence.source}</Text>
-        <Text style={styles.evidenceText}>{evidence.note}</Text>
+        <Text style={styles.evidenceLabel}>- Source: {evidence.source}</Text>
+        <Text style={styles.evidenceText}>- Note: {evidence.note}</Text>
       </View>
     );
   }
@@ -148,8 +166,8 @@ function EvidenceBlock({
 
   return (
     <View style={styles.evidence}>
-      <Text style={styles.evidenceLabel}>Query: {evidence.query}</Text>
-      <Text style={styles.evidenceText}>{evidence.answerText}</Text>
+      <Text style={styles.evidenceLabel}>- Query: {evidence.query}</Text>
+      <Text style={styles.evidenceText}>- Answer: {evidence.answerText}</Text>
       <View style={styles.pillRow}>
         {ownDomain && !ownCited && (
           <Text style={styles.absentPill}>Your site: not cited</Text>
@@ -178,7 +196,9 @@ function Finding({
         <Text style={styles.findingTitle}>{finding.label}</Text>
         <View style={styles.unavailable}>
           <Text style={styles.evidenceText}>
-            {finding.unavailableReason ?? "This check could not be completed."}
+            {formatPublicUnavailableReason(
+              finding.unavailableReason ?? "This check could not be completed.",
+            )}
           </Text>
         </View>
       </View>
@@ -192,7 +212,7 @@ function Finding({
         </Text>
         <Text style={[styles.findingTitle, { marginLeft: 6 }]}>{finding.label}</Text>
       </View>
-      <Text style={styles.text}>{finding.finding}</Text>
+      <Text style={styles.bulletText}>- Finding: {finding.finding}</Text>
       <EvidenceBlock evidence={finding.evidence} ownDomain={ownDomain} />
     </View>
   );
@@ -216,7 +236,9 @@ function PillarSection({
       {pillar.status === "unavailable" ? (
         <View style={styles.unavailable}>
           <Text style={styles.evidenceText}>
-            {pillar.unavailableReason ?? "This pillar could not be completed."}
+            {formatPublicUnavailableReason(
+              pillar.unavailableReason ?? "This pillar could not be completed.",
+            )}
           </Text>
         </View>
       ) : (
@@ -269,7 +291,7 @@ function FixSection({ fix }: { fix: Fix }) {
         <Text style={styles.pill}>impact: {fix.impact}</Text>
         <Text style={styles.pill}>effort: {fix.effort}</Text>
       </View>
-      <Text style={styles.text}>{fix.explanation}</Text>
+      <Text style={styles.bulletText}>- Explanation: {fix.explanation}</Text>
       {fix.copyPasteContent && (
         <View style={styles.copyBlock}>
           <Text style={styles.copyText}>{fix.copyPasteContent}</Text>
@@ -295,6 +317,8 @@ export function ReportPdf({ audit }: { audit: Audit }) {
   })();
 
   const pillars = PILLAR_ORDER.map((key) => audit.pillars[key]);
+  const summaryPillars = summarizePillars(audit.pillars);
+  const summaryFixes = summarizeFixes(audit);
 
   return (
     <Document>
@@ -303,7 +327,30 @@ export function ReportPdf({ audit }: { audit: Audit }) {
         <Text style={styles.businessTitle}>{audit.businessName}</Text>
         <Text style={styles.businessUrl}>{audit.url}</Text>
 
-        {audit.verdict && <Text style={styles.verdict}>{audit.verdict}</Text>}
+        <View style={styles.summaryCard}>
+          <Text style={styles.summaryTitle}>Structured summary</Text>
+          <View style={styles.summaryList}>
+            <Text style={styles.summaryItem}>- businessName: {audit.businessName}</Text>
+            <Text style={styles.summaryItem}>- url: {audit.url}</Text>
+            <Text style={styles.summaryItem}>
+              - score: {audit.score.total} / {audit.score.maxTotal}
+            </Text>
+            <Text style={styles.summaryItem}>- status: {audit.status}</Text>
+            {summaryPillars.map((pillar) => (
+              <Text key={pillar.key} style={styles.summaryItem}>
+                - {pillar.label}: {pillar.score}
+                {pillar.status === "unavailable" && pillar.unavailableReason
+                  ? ` | note: ${pillar.unavailableReason}`
+                  : ""}
+              </Text>
+            ))}
+            {summaryFixes.length > 0 && (
+              <Text style={styles.summaryItem}>
+                - topFixes: {summaryFixes.map((fix) => fix.title).join(", ")}
+              </Text>
+            )}
+          </View>
+        </View>
 
         <ScoreSection
           score={audit.score.total}

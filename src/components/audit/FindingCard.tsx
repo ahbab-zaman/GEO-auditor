@@ -28,9 +28,15 @@ export function FindingCard({
           <CircleSlash className="h-4 w-4" aria-hidden />
           <h4 className="text-sm font-semibold">{finding.label}</h4>
         </div>
-        <p className="mt-2 text-sm text-text-secondary">
-          {finding.unavailableReason ?? "This check could not be completed."}
-        </p>
+        <ul className="mt-2 space-y-2 text-sm text-text-secondary">
+          <li>
+            <span className="font-semibold text-text-primary">Status:</span> unavailable
+          </li>
+          <li>
+            <span className="font-semibold text-text-primary">Note:</span>{" "}
+            {finding.unavailableReason ?? "This check could not be completed."}
+          </li>
+        </ul>
       </div>
     );
   }
@@ -43,7 +49,11 @@ export function FindingCard({
         </span>
         <h4 className="text-sm font-semibold text-text-primary">{finding.label}</h4>
       </div>
-      <p className="mt-3 text-sm leading-6 text-text-secondary">{finding.finding}</p>
+      <ul className="mt-3 space-y-2 text-sm leading-6 text-text-secondary">
+        <li>
+          <span className="font-semibold text-text-primary">Finding:</span> {finding.finding}
+        </li>
+      </ul>
       <div className="mt-3">
         <EvidenceBlock evidence={finding.evidence} ownDomain={ownDomain} />
       </div>

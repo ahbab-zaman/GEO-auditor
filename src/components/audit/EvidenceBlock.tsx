@@ -17,18 +17,33 @@ export function EvidenceBlock({
 }) {
   if (evidence.type === "quote") {
     return (
-      <blockquote className="border-l-4 border-border bg-quote-bg px-4 py-3 text-sm italic text-text-secondary">
-        <p className="text-xs text-text-muted">Source: {evidence.source}</p>
-        <p className="mt-1">{evidence.text}</p>
-      </blockquote>
+      <div className="rounded-lg bg-quote-bg px-4 py-3 text-sm text-text-secondary">
+        <ul className="space-y-2">
+          <li>
+            <span className="font-semibold text-text-primary">Source:</span> {evidence.source}
+          </li>
+          <li>
+            <span className="font-semibold text-text-primary">Quote:</span> {evidence.text}
+          </li>
+        </ul>
+      </div>
     );
   }
 
   if (evidence.type === "code") {
     return (
       <div className="rounded-lg bg-code-bg px-4 py-3">
-        <p className="text-xs text-text-muted">Source: {evidence.source}</p>
-        <pre className="mt-1 overflow-x-auto font-mono text-sm text-code-text">{evidence.snippet}</pre>
+        <ul className="space-y-2 text-sm text-code-text">
+          <li>
+            <span className="font-semibold text-text-primary">Source:</span> {evidence.source}
+          </li>
+          <li>
+            <span className="font-semibold text-text-primary">Snippet:</span>
+            <pre className="mt-2 overflow-x-auto whitespace-pre-wrap font-mono text-sm text-code-text">
+              {evidence.snippet}
+            </pre>
+          </li>
+        </ul>
       </div>
     );
   }
@@ -36,8 +51,14 @@ export function EvidenceBlock({
   if (evidence.type === "absence") {
     return (
       <div className="rounded-lg bg-surface-secondary px-4 py-3">
-        <p className="text-xs text-text-muted">Source: {evidence.source}</p>
-        <p className="mt-1 text-sm italic text-text-secondary">{evidence.note}</p>
+        <ul className="space-y-2 text-sm text-text-secondary">
+          <li>
+            <span className="font-semibold text-text-primary">Source:</span> {evidence.source}
+          </li>
+          <li>
+            <span className="font-semibold text-text-primary">Note:</span> {evidence.note}
+          </li>
+        </ul>
       </div>
     );
   }
@@ -46,10 +67,18 @@ export function EvidenceBlock({
 
   return (
     <div className="rounded-lg bg-surface-secondary px-4 py-3">
-      <p className="text-xs text-text-muted">Query: {evidence.query}</p>
-      <p className="mt-2 border-l-2 border-border pl-3 text-[13px] italic leading-5 text-text-secondary">
-        {evidence.answerText}
-      </p>
+      <ul className="space-y-2 text-sm text-text-secondary">
+        <li>
+          <span className="font-semibold text-text-primary">Query:</span> {evidence.query}
+        </li>
+        <li>
+          <span className="font-semibold text-text-primary">Answer:</span> {evidence.answerText}
+        </li>
+        <li>
+          <span className="font-semibold text-text-primary">Cited domains:</span>{" "}
+          {evidence.citedUrls.map((uri) => resolveCitationDomain(uri)).join(", ") || "none"}
+        </li>
+      </ul>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {ownDomain &&
           (ownCited ? null : (

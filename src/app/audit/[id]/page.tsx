@@ -112,7 +112,7 @@ export default function AuditReportPage() {
         </a>
       </div>
       <div className="mt-10 space-y-8">
-        <VerdictBanner verdict={audit.verdict} />
+        <VerdictBanner audit={audit} />
         <ScoreHero
           score={audit.score.total}
           businessName={audit.businessName}

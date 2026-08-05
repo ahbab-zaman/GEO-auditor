@@ -20,9 +20,15 @@ export function PillarBreakdown({
       {pillar.status === "unavailable" ? (
         <div className="flex items-start gap-3 rounded-xl border border-border bg-surface p-6 shadow-card">
           <CircleSlash className="mt-0.5 h-5 w-5 shrink-0 text-text-muted" aria-hidden />
-          <p className="text-sm text-text-secondary">
-            {pillar.unavailableReason ?? "This pillar could not be completed."}
-          </p>
+          <ul className="space-y-2 text-sm text-text-secondary">
+            <li>
+              <span className="font-semibold text-text-primary">Status:</span> unavailable
+            </li>
+            <li>
+              <span className="font-semibold text-text-primary">Note:</span>{" "}
+              {pillar.unavailableReason ?? "This pillar could not be completed."}
+            </li>
+          </ul>
         </div>
       ) : (
         <div className="space-y-4">
