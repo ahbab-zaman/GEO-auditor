@@ -150,6 +150,7 @@ export async function runAuditStep(id: string): Promise<void> {
         ...current,
         status: "failed",
         error: "The audit could not complete. Please try again.",
+        jobLock: null,
       }).catch(() => {});
     }
   }
@@ -174,6 +175,7 @@ async function runScrapeStep(id: string): Promise<void> {
           error instanceof ScrapeError
             ? error.userMessage
             : "Could not reach this website — check the URL and try again.",
+        jobLock: null,
       });
     }
     return;
@@ -187,6 +189,7 @@ async function runScrapeStep(id: string): Promise<void> {
     status: "analyzing",
     stage: "structural",
     updatedAt: new Date().toISOString(),
+    jobLock: null,
   });
 }
 
@@ -204,6 +207,7 @@ async function runStructuralStep(id: string): Promise<void> {
     pillars: { ...current.pillars, structuralAnswerability },
     stage: "live-ai",
     updatedAt: new Date().toISOString(),
+    jobLock: null,
   });
 }
 
@@ -222,6 +226,7 @@ async function runLiveAiStep(id: string): Promise<void> {
     pillars: { ...current.pillars, liveAiCitation },
     stage: "third-party",
     updatedAt: new Date().toISOString(),
+    jobLock: null,
   });
 }
 
@@ -239,6 +244,7 @@ async function runThirdPartyStep(id: string): Promise<void> {
     pillars: { ...current.pillars, thirdPartyCorroboration },
     stage: "finalize",
     updatedAt: new Date().toISOString(),
+    jobLock: null,
   });
 }
 
