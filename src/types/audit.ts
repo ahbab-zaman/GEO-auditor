@@ -33,6 +33,7 @@ export type ScrapedPage = {
   title: string;
   rawTextExcerpt: string;
   jsonLdBlocks: unknown[];
+  headings: string[];
   fetchedAt: string;
 };
 

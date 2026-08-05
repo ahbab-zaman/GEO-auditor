@@ -88,6 +88,15 @@ function findLinkedPages(
   return found.slice(0, MAX_PAGES - 1);
 }
 
+function extractHeadings($: cheerio.CheerioAPI): string[] {
+  const headings: string[] = [];
+  $("h1, h2, h3, h4, h5, h6").each((_, el) => {
+    const text = $(el).text().replace(/\s+/g, " ").trim();
+    if (text) headings.push(text);
+  });
+  return headings;
+}
+
 function buildPage(
   url: string,
   html: string,
@@ -100,6 +109,7 @@ function buildPage(
     title: $("title").text().replace(/\s+/g, " ").trim() || url,
     rawTextExcerpt: extractVisibleText($).slice(0, TEXT_EXCERPT_LENGTH),
     jsonLdBlocks: extractJsonLd($),
+    headings: extractHeadings($),
     fetchedAt: new Date().toISOString(),
   };
 }

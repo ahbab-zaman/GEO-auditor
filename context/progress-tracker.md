@@ -7,9 +7,9 @@ is done, what is in progress, and what is next.
 
 ## Current Status
 
-**Phase:** Phase 3 — Structural Answerability (05 complete)
-**Last completed:** 05 Schema.org Presence Check
-**Next:** 06 Direct-Answer Clarity Check
+**Phase:** Phase 3 — Structural Answerability (COMPLETE — 04–07 done)
+**Last completed:** 07 FAQ Presence Check
+**Next:** Phase 4 — 08 Gemini Client (lib/gemini.ts already stubbed; wire `geminiGroundedQuery`)
 
 ---
 
@@ -56,8 +56,16 @@ is done, what is in progress, and what is next.
   - [x] `runStructuralAnswerability(origin, pages)` now runs both 04 + 05 checks; `runAudit` passes `scrapedPages`
   - [x] `fixes.ts` — added `schema-presence` copy-paste `<script type="application/ld+json">` block
   - [x] Verified against 11 hand-built fixtures (arrays, @graph, sparse, empty strings, multi-page, BusinessEvent false-positive) — all pass
-- [ ] 06 Direct-Answer Clarity Check
-- [ ] 07 FAQ Presence Check
+- [x] 06 Direct-Answer Clarity Check
+  - [x] `checkDirectAnswerClarity(homepageText)` in `structuralAnswerability.ts` — homepage `rawTextExcerpt` (first 1500 chars) → `geminiJson` (temp 0) with library-docs rubric prompt
+  - [x] Result zod-validated via `DirectAnswerExtractionSchema` (schemas/audit.ts); binary 10/0 scoring in code
+  - [x] Evidence: `quote` of `extractedSentence` (pass) or the actual opening text (fail); API failure → `unavailable` with human-readable reason
+  - [x] `runStructuralAnswerability` now runs 04 + 05 + 06; verified against 6 fixtures (stubbed fetch: failure, success, fences, no-answer, null-sentence, malformed shape) — all pass
+- [x] 07 FAQ Presence Check
+  - [x] `checkFaqPresence(pages)` in `structuralAnswerability.ts` — FAQPage schema (arrays/@graph handled) OR question-style headings; 5 / 0 scoring; `quote` evidence of first Q&A pair, `absence` when none
+  - [x] `ScrapedPage` gained a `headings: string[]` field, populated in `scrape.ts` (`h1–h6` extraction)
+  - [x] `runStructuralAnswerability` now runs all four checks 04–07; verified against 8 fixtures — all pass
+- [x] **Phase 3 complete — Pillar A (Structural Answerability) is fully real.** Removed the 1800ms analyzing `sleep` from `runAudit` (it only simulated the mock structural pillar). `getMockPillarResults` fully deleted; only Pillars B + C remain mocked.
 
 ### Phase 4 — Live AI Citation Test (Pillar B)
 

@@ -7,8 +7,6 @@ import { getMockLiveAiCitation, getMockThirdPartyCorroboration } from "@/lib/pip
 import { scrapeSite } from "@/lib/pipeline/scrape";
 import { runStructuralAnswerability } from "@/lib/pipeline/structuralAnswerability";
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
 export async function createAudit(url: string, businessName: string): Promise<Audit> {
   const audit: Audit = {
     id: nanoid(10),
@@ -84,7 +82,6 @@ export async function runAudit(id: string): Promise<void> {
     await saveAudit({ ...scraped, scrapedPages });
 
     await setStatus(id, "analyzing");
-    await sleep(1800);
 
     const analyzing = await getAudit(id);
     if (!analyzing) return;

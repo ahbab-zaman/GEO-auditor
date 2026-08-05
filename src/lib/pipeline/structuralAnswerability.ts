@@ -1,6 +1,9 @@
 import type { CheckResult, PillarResult, ScrapedPage } from "@/types/audit";
+import { z } from "zod";
 import { POINTS, PILLAR_MAX } from "@/lib/utils";
 import { fetchRobotsTxt, parseAiCrawlerText } from "@/lib/robots";
+import { geminiJson } from "@/lib/gemini";
+import { DirectAnswerExtractionSchema } from "@/schemas/audit";
 
 const SCHEMA_SNIPPET_MAX = 800;
 
@@ -262,6 +265,159 @@ export function checkSchemaPresence(pages: ScrapedPage[]): CheckResult {
   }
 }
 
+export async function checkDirectAnswerClarity(homepageText: string): Promise<CheckResult> {
+  const pointsPossible = POINTS.structuralAnswerability.directAnswerClarity;
+  try {
+    const prompt = `You extract facts from web page text. Return only valid JSON, no markdown fences.
+
+Does the following text state, in one extractable sentence within the first 200 words, what this
+business does and who it's for?
+
+Text: """${homepageText.slice(0, 1500)}"""
+
+Return JSON exactly matching: { "hasDirectAnswer": boolean, "extractedSentence": string | null, "reasoning": string }`;
+
+    const raw = await geminiJson<z.infer<typeof DirectAnswerExtractionSchema>>(prompt, 0);
+    const parsed = DirectAnswerExtractionSchema.safeParse(raw);
+    if (!parsed.success) throw new Error("Gemini returned malformed direct-answer JSON");
+
+    const { hasDirectAnswer, extractedSentence } = parsed.data;
+
+    if (hasDirectAnswer && extractedSentence) {
+      return {
+        id: "direct-answer-clarity",
+        label: "Direct-answer clarity",
+        pointsEarned: pointsPossible,
+        pointsPossible,
+        finding:
+          "The homepage states clearly, in one sentence, what this business does and who it is for.",
+        evidence: {
+          type: "quote",
+          source: "homepage",
+          text: extractedSentence,
+        },
+        severity: "pass",
+        status: "complete",
+      };
+    }
+
+    return {
+      id: "direct-answer-clarity",
+      label: "Direct-answer clarity",
+      pointsEarned: 0,
+      pointsPossible,
+      finding:
+        "An AI reading the homepage could not extract a single clear sentence stating what this business does and who it is for.",
+      evidence: {
+        type: "quote",
+        source: "homepage",
+        text: homepageText.slice(0, 400),
+      },
+      severity: "critical",
+      status: "complete",
+    };
+  } catch (error) {
+    console.error("[pipeline/direct-answer-clarity]", error);
+    return {
+      id: "direct-answer-clarity",
+      label: "Direct-answer clarity",
+      pointsEarned: 0,
+      pointsPossible,
+      finding: "The direct-answer clarity check could not be completed.",
+      evidence: { type: "absence", source: "homepage", note: "The AI grading call failed." },
+      severity: "warning",
+      status: "unavailable",
+      unavailableReason: "The AI grading call failed.",
+    };
+  }
+}
+
+export function checkFaqPresence(pages: ScrapedPage[]): CheckResult {
+  const pointsPossible = POINTS.structuralAnswerability.faqPresence;
+  try {
+    const schemaQuestions = findFaqPageQuestions(pages);
+    const headingQuestions = findHeadingQuestions(pages);
+
+    const firstQuestion = schemaQuestions[0] ?? headingQuestions[0];
+
+    if (firstQuestion) {
+      return {
+        id: "faq-presence",
+        label: "FAQ content",
+        pointsEarned: pointsPossible,
+        pointsPossible,
+        finding:
+          schemaQuestions.length > 0
+            ? "The site publishes an FAQ section with question-and-answer pairs that AI systems can extract directly."
+            : "The site contains question-style headings that AI systems can use to answer common questions directly.",
+        evidence: {
+          type: "quote",
+          source: firstQuestion.sourceUrl,
+          text: firstQuestion.question,
+        },
+        severity: "pass",
+        status: "complete",
+      };
+    }
+
+    return {
+      id: "faq-presence",
+      label: "FAQ content",
+      pointsEarned: 0,
+      pointsPossible,
+      finding: "No FAQ content was detected on the site.",
+      evidence: {
+        type: "absence",
+        source: pages[0]?.url ?? "homepage",
+        note: "No FAQPage schema or question-style headings found.",
+      },
+      severity: "warning",
+      status: "complete",
+    };
+  } catch (error) {
+    console.error("[pipeline/faq-presence]", error);
+    return {
+      id: "faq-presence",
+      label: "FAQ content",
+      pointsEarned: 0,
+      pointsPossible,
+      finding: "FAQ content could not be checked.",
+      evidence: { type: "absence", source: "homepage", note: "Could not be checked." },
+      severity: "warning",
+      status: "unavailable",
+      unavailableReason: "FAQ data could not be read.",
+    };
+  }
+}
+
+type FoundQuestion = { question: string; sourceUrl: string };
+
+function findFaqPageQuestions(pages: ScrapedPage[]): FoundQuestion[] {
+  const questions: FoundQuestion[] = [];
+  for (const { block, sourceUrl } of collectCandidates(pages)) {
+    if (!isRecord(block)) continue;
+    if (!getTypeTokens(block).includes("FAQPage")) continue;
+    const mainEntity = block["mainEntity"];
+    const items = Array.isArray(mainEntity) ? mainEntity : [mainEntity];
+    for (const item of items) {
+      if (!isRecord(item)) continue;
+      const question = getStringField(item, "name") ?? getStringField(item, "text");
+      if (question) questions.push({ question, sourceUrl });
+    }
+  }
+  return questions;
+}
+
+function findHeadingQuestions(pages: ScrapedPage[]): FoundQuestion[] {
+  const questions: FoundQuestion[] = [];
+  for (const page of pages) {
+    for (const heading of page.headings ?? []) {
+      if (/\?/.test(heading)) questions.push({ question: heading, sourceUrl: page.url });
+    }
+  }
+  return questions;
+}
+
 type FoundBlock = {
   name: string | null;
   description: string | null;
@@ -348,9 +504,12 @@ export async function runStructuralAnswerability(
   pages: ScrapedPage[],
 ): Promise<PillarResult> {
   const robotsTxt = await fetchRobotsTxt(origin);
+  const homepageText = pages.find((page) => page.kind === "homepage")?.rawTextExcerpt ?? "";
   const checks: CheckResult[] = [
     checkAiCrawlerAccess(robotsTxt),
     checkSchemaPresence(pages),
+    await checkDirectAnswerClarity(homepageText),
+    checkFaqPresence(pages),
   ];
   const pointsEarned = checks.reduce((sum, check) => sum + check.pointsEarned, 0);
   return {
