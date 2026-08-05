@@ -16,6 +16,18 @@ export const COPY_PASTE_CONTENT_BY_CHECK_ID: Partial<Record<string, string>> = {
     "User-agent: Google-Extended",
     "Allow: /",
   ].join("\n"),
+  "schema-presence": [
+    "<script type=\"application/ld+json\">",
+    "{",
+    "  \"@context\": \"https://schema.org\",",
+    "  \"@type\": \"LocalBusiness\",",
+    "  \"name\": \"YOUR BUSINESS NAME\",",
+    "  \"description\": \"What you do and who it is for\",",
+    "  \"url\": \"https://your-site.example\",",
+    "  \"telephone\": \"+1-555-555-5555\"",
+    "}",
+    "</script>",
+  ].join("\n"),
 };
 
 export function deriveFixes(checks: CheckResult[]): Fix[] {

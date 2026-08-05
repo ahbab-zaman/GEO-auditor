@@ -7,9 +7,9 @@ is done, what is in progress, and what is next.
 
 ## Current Status
 
-**Phase:** Phase 3 — Structural Answerability (04 complete)
-**Last completed:** 04 AI Crawler Access Check
-**Next:** 05 Schema.org Presence Check
+**Phase:** Phase 3 — Structural Answerability (05 complete)
+**Last completed:** 05 Schema.org Presence Check
+**Next:** 06 Direct-Answer Clarity Check
 
 ---
 
@@ -50,7 +50,12 @@ is done, what is in progress, and what is next.
   - [x] Scoring: missing robots.txt → 10/10 pass (`absence` evidence); none blocked → 10; some blocked → 5; `User-agent: *` `Disallow: /` → 0 (critical); evidence = exact matching robots.txt lines as `code`
   - [x] `runAudit.ts` — real structural pillar replaces the mock; `mocks.ts` split into `getMockLiveAiCitation` + `getMockThirdPartyCorroboration`, structural mock deleted
   - [x] Parser verified against 10 hand-built fixtures (block-all, per-bot, partial paths, case-insensitivity, unrelated bots) — all pass
-- [ ] 05 Schema.org Presence Check
+- [x] 05 Schema.org Presence Check
+  - [x] `checkSchemaPresence(pages)` in `structuralAnswerability.ts` — scans all scraped pages' `jsonLdBlocks` (handles arrays, `@graph`, `@type` string/array) for `Organization` / `LocalBusiness` / curated subtype
+  - [x] Scoring: complete (`name` + `description`) → 10 pass; present but sparse → 5 warning; absent → 0 critical with `absence` evidence carrying the recommended LocalBusiness snippet
+  - [x] `runStructuralAnswerability(origin, pages)` now runs both 04 + 05 checks; `runAudit` passes `scrapedPages`
+  - [x] `fixes.ts` — added `schema-presence` copy-paste `<script type="application/ld+json">` block
+  - [x] Verified against 11 hand-built fixtures (arrays, @graph, sparse, empty strings, multi-page, BusinessEvent false-positive) — all pass
 - [ ] 06 Direct-Answer Clarity Check
 - [ ] 07 FAQ Presence Check
 

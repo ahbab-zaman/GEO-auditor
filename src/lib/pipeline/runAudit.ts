@@ -91,6 +91,7 @@ export async function runAudit(id: string): Promise<void> {
 
     const structuralAnswerability = await runStructuralAnswerability(
       new URL(analyzing.url).origin,
+      analyzing.scrapedPages,
     );
     const liveAiCitation = getMockLiveAiCitation(analyzing.businessName, analyzing.url);
     const thirdPartyCorroboration = getMockThirdPartyCorroboration();
