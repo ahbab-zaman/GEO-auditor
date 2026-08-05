@@ -34,7 +34,7 @@ export function AuditForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4 rounded-xl border border-border bg-surface p-6 shadow-sm">
+    <form onSubmit={handleSubmit} className="space-y-4 rounded-xl border border-border bg-surface p-6 shadow-card">
       <label className="block">
         <span className="text-sm font-medium text-text-primary">Business name</span>
         <input

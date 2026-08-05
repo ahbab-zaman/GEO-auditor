@@ -1,4 +1,11 @@
+import { Globe, MessageCircle, BarChart3 } from "lucide-react";
 import { AuditForm } from "@/components/audit/AuditForm";
+
+const STEPS = [
+  { Icon: Globe, text: "We read your website the way an AI search engine would." },
+  { Icon: MessageCircle, text: "We ask a real AI engine what it knows about your business." },
+  { Icon: BarChart3, text: "We score your AI visibility and give you a fix list." },
+];
 
 export default function HomePage() {
   return (
@@ -13,11 +20,14 @@ export default function HomePage() {
       <div className="mt-8 w-full max-w-md">
         <AuditForm />
       </div>
-      <p className="mt-8 max-w-md text-center text-xs leading-4 text-text-muted">
-        GEO Auditor reads your website, asks a real AI engine what it knows
-        about you, then checks who else vouches for you online — and turns that
-        into a scored report with a prioritized fix list.
-      </p>
+      <div className="mt-8 w-full max-w-md space-y-3">
+        {STEPS.map(({ Icon, text }) => (
+          <div key={text} className="flex items-start gap-3">
+            <Icon className="mt-0.5 h-4 w-4 shrink-0 text-text-muted" aria-hidden />
+            <p className="text-sm leading-5 text-text-secondary">{text}</p>
+          </div>
+        ))}
+      </div>
     </main>
   );
 }

@@ -90,10 +90,18 @@ export default function AuditReportPage() {
 
   return (
     <main className="mx-auto flex min-h-svh w-full max-w-[840px] flex-col px-8 py-10">
-      <Link href="/" className="text-sm font-medium text-accent">
-        GEO Auditor
-      </Link>
-      <div className="mt-6 space-y-8">
+      <div className="flex items-center justify-between">
+        <Link href="/" className="text-sm font-medium text-accent">
+          GEO Auditor
+        </Link>
+        <a
+          href={`/api/audit/${id}/pdf`}
+          className="rounded-md bg-accent px-5 py-2.5 text-sm font-medium text-accent-foreground"
+        >
+          Download PDF
+        </a>
+      </div>
+      <div className="mt-10 space-y-8">
         <VerdictBanner verdict={audit.verdict} />
         <ScoreHero
           score={audit.score.total}

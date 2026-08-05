@@ -3,7 +3,7 @@ import type { Audit, AuditStatus, PillarResult, ScrapedPage } from "@/types/audi
 import { getAudit, saveAudit } from "@/lib/storage";
 import { computeScore } from "@/lib/pipeline/score";
 import { deriveFixes } from "@/lib/pipeline/fixes";
-import { scrapeSite } from "@/lib/pipeline/scrape";
+import { scrapeSite, ScrapeError } from "@/lib/pipeline/scrape";
 import { runStructuralAnswerability } from "@/lib/pipeline/structuralAnswerability";
 import { runLiveAiCitation } from "@/lib/pipeline/liveAiCitation";
 import { runThirdPartyCorroboration } from "@/lib/pipeline/thirdPartyCorroboration";
@@ -73,7 +73,10 @@ export async function runAudit(id: string): Promise<void> {
         await saveAudit({
           ...failed,
           status: "failed",
-          error: "Could not reach this website — check the URL and try again.",
+          error:
+            error instanceof ScrapeError
+              ? error.userMessage
+              : "Could not reach this website — check the URL and try again.",
         });
       }
       return;

@@ -23,14 +23,14 @@ export function FixCard({ fix }: { fix: Fix }) {
     try {
       await navigator.clipboard.writeText(fix.copyPasteContent);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setTimeout(() => setCopied(false), 1500);
     } catch {
       setCopied(false);
     }
   }
 
   return (
-    <div className="rounded-xl border border-border bg-surface p-6">
+    <div className="rounded-xl border border-border bg-surface p-6 shadow-card transition-shadow hover:shadow-card-hover">
       <div className="flex flex-wrap items-center gap-2">
         <h4 className="text-sm font-semibold text-text-primary">{fix.title}</h4>
         <span className={`rounded-full px-2 py-0.5 text-xs ${IMPACT_STYLES[fix.impact]}`}>

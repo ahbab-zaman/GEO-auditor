@@ -2,15 +2,42 @@ import * as cheerio from "cheerio";
 import type { ScrapedPage } from "@/types/audit";
 
 const USER_AGENT =
-  "Mozilla/5.0 (compatible; GEOAuditorBot/1.0; +https://example.com/bot)";
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
 const FETCH_TIMEOUT_MS = 8000;
 const MAX_PAGES = 3;
 const TEXT_EXCERPT_LENGTH = 2000;
+const MAX_RETRIES = 2;
+const RETRY_BACKOFF_MS = 750;
+const RETRYABLE_STATUS = new Set([408, 425, 429, 500, 502, 503, 504]);
 
 type FetchResult = { html: string; finalUrl: string };
 type LinkedPage = { url: string; kind: "about" | "faq" };
 
-async function fetchPage(url: string): Promise<FetchResult> {
+export class ScrapeError extends Error {
+  userMessage: string;
+
+  constructor(message: string, userMessage: string) {
+    super(message);
+    this.name = "ScrapeError";
+    this.userMessage = userMessage;
+  }
+}
+
+class HttpStatusError extends Error {
+  status: number;
+
+  constructor(status: number) {
+    super(`Fetch failed with status ${status}`);
+    this.name = "HttpStatusError";
+    this.status = status;
+  }
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchOnce(url: string): Promise<FetchResult> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
@@ -20,7 +47,7 @@ async function fetchPage(url: string): Promise<FetchResult> {
       redirect: "follow",
     });
     if (!response.ok) {
-      throw new Error(`Fetch failed with status ${response.status}`);
+      throw new HttpStatusError(response.status);
     }
     return { html: await response.text(), finalUrl: response.url };
   } catch (error) {
@@ -31,6 +58,38 @@ async function fetchPage(url: string): Promise<FetchResult> {
   } finally {
     clearTimeout(timeout);
   }
+}
+
+async function fetchPage(url: string): Promise<FetchResult> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    if (attempt > 0) await delay(RETRY_BACKOFF_MS * attempt);
+    try {
+      return await fetchOnce(url);
+    } catch (error) {
+      lastError = error;
+      const retryable =
+        error instanceof HttpStatusError && RETRYABLE_STATUS.has(error.status);
+      if (!retryable) throw error;
+    }
+  }
+  throw lastError;
+}
+
+function scrapeErrorMessage(error: unknown): string {
+  if (error instanceof HttpStatusError) {
+    if (error.status === 429) {
+      return "This website is blocking or rate-limiting our scanner (too many requests). Try again in a few minutes.";
+    }
+    if (error.status === 403) {
+      return "This website is blocking automated access (403).";
+    }
+    return `The website returned an error (HTTP ${error.status}).`;
+  }
+  if (error instanceof Error && error.message.includes("timed out")) {
+    return "The website took too long to respond.";
+  }
+  return "Could not reach this website — check the URL and try again.";
 }
 
 function extractVisibleText($: cheerio.CheerioAPI): string {
@@ -115,7 +174,16 @@ function buildPage(
 }
 
 export async function scrapeSite(url: string): Promise<ScrapedPage[]> {
-  const homepage = await fetchPage(url);
+  let homepage: FetchResult;
+  try {
+    homepage = await fetchPage(url);
+  } catch (error) {
+    const userMessage = scrapeErrorMessage(error);
+    throw new ScrapeError(
+      `Homepage fetch failed for ${url}`,
+      userMessage,
+    );
+  }
   const homepageUrl = homepage.finalUrl;
   const homepagePage = buildPage(homepageUrl, homepage.html, "homepage");
   const origin = new URL(homepageUrl).origin;

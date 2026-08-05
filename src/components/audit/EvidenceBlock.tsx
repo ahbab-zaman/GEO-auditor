@@ -42,11 +42,21 @@ export function EvidenceBlock({
     );
   }
 
+  const ownCited = evidence.citedUrls.some((uri) => resolveCitationDomain(uri) === ownDomain);
+
   return (
     <div className="rounded-lg bg-surface-secondary px-4 py-3">
       <p className="text-xs text-text-muted">Query: {evidence.query}</p>
-      <p className="mt-2 text-sm text-text-secondary">{evidence.answerText}</p>
-      <div className="mt-3 flex flex-wrap gap-2">
+      <p className="mt-2 border-l-2 border-border pl-3 text-[13px] italic leading-5 text-text-secondary">
+        {evidence.answerText}
+      </p>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        {ownDomain &&
+          (ownCited ? null : (
+            <span className="rounded-full bg-critical-light px-2.5 py-0.5 text-xs text-critical-foreground">
+              Your site: not cited
+            </span>
+          ))}
         {evidence.citedUrls.map((uri) => {
           const domain = resolveCitationDomain(uri);
           const isOwn = Boolean(ownDomain) && domain === ownDomain;
@@ -54,7 +64,9 @@ export function EvidenceBlock({
             <span
               key={uri}
               className={`rounded-full px-2.5 py-0.5 text-xs ${
-                isOwn ? "bg-accent-light text-accent" : "bg-surface text-text-secondary ring-1 ring-inset ring-border"
+                isOwn
+                  ? "bg-accent-light text-accent"
+                  : "bg-surface text-text-secondary ring-1 ring-inset ring-border"
               }`}
             >
               {domain}

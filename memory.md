@@ -1,42 +1,54 @@
-# Memory — Phase 5 (Pillar C) Complete
+# Memory — Phases 5–6 Complete + Phase 7 UI Update
 
 Last updated: 2026-08-06
 
 ## What was built
 
-- `src/lib/pipeline/thirdPartyCorroboration.ts` — **Pillar C fully real**:
-  - `runThirdPartyCorroboration(businessName, url)` — one grounded query: `"What do people say about [businessName] ([url])? Cite your sources."`
-  - Resolves every citation via `resolveCitationUrl` (shared cache, HEAD-follow), dedupes, filters out the business's own domain.
-  - `RESOLVER_TRAMPOLINES = ["vertexaisearch.cloud.google.com", "vertexaisearch.googleapis.com"]` — unresolved Google grounding redirect hosts are dropped from the count + evidence so they can never inflate the external-domain tier.
-  - Scores `external-presence` (/20): 20 if 3+ distinct external domains, 10 if 1–2, 0 if none; severity pass/warning/critical from the same `severityFor` helper used by Pillar B.
-  - Evidence: `citations` (query + verbatim answerText + resolved citedUrls + businessCited) when externals found; `absence` evidence when none.
-  - Grounded-query failure → pillar `unavailable` with human reason.
-- `src/lib/pipeline/runAudit.ts` — `await runThirdPartyCorroboration(analyzing.businessName, analyzing.url)` replaces `getMockThirdPartyCorroboration`.
-- `src/lib/pipeline/mocks.ts` — **deleted outright** (was the last mock; no mocks remain anywhere).
-- Test harness `C:\Users\DELL\AppData\Local\Temp\opencode\third-party-test.mjs` + alias loader `geoalias-loader.mjs` (points at `D:/GEO_Audit/src` — the old `alias-loader.mjs` points at a different project). Run: `node --loader file:///C:/Users/DELL/AppData/Local/Temp/opencode/geoalias-loader.mjs --experimental-strip-types ...\third-party-test.mjs`.
+- **Phase 5 — `src/lib/pipeline/thirdPartyCorroboration.ts`** (Pillar C fully real):
+  - `runThirdPartyCorroboration(businessName, url)` — one grounded query `"What do people say about [businessName] ([url])? Cite your sources."`
+  - Resolves citations via shared `resolveCitationUrl` cache, dedupes, filters own domain; `RESOLVER_TRAMPOLINES = ["vertexaisearch.cloud.google.com", "vertexaisearch.googleapis.com"]` dropped from count + evidence (fixes score inflation).
+  - Scores `external-presence` /20: 20 if 3+ external domains, 10 if 1–2, 0 if none. Evidence: `citations` or `absence` when none. Query failure → pillar `unavailable`.
+  - `mocks.ts` **deleted outright** — zero mocks left anywhere.
+- **Phase 6 — `src/lib/pipeline/verdict.ts`** (Feature 12): `generateVerdict(businessName, pillars)` via `geminiJson` (temp 0.3) + zod `VerdictSchema`; runs after all pillars; per-pillar findings in prompt (total-invisibility safe); nullable — failure returns `null`, never blocks. Replaces the old hardcoded string in `runAudit`.
+- **Phase 6 — fixes polish** (Feature 14): `TITLE_BY_CHECK_ID` + `EXPLANATION_BY_CHECK_ID` for all 8 check ids in `fixes.ts` — real plain-language business-owner copy replaces the placeholder.
+- **Phase 7 UI update** (from changed ui-tokens/ui-rules/build-plan 15):
+  - `globals.css` — added `--shadow-card` (0 1px 3px rgba(0,0,0,.06)), `--shadow-card-hover` (0 2px 6px), and `--animate-breathe` keyframe.
+  - `VerdictBanner` — borderless `bg-surface-secondary`, `text-[30px] font-semibold leading-[42px] text-text-primary`, no severity tint, py-8.
+  - `ScoreHero` — now client component, borderless, 180px SVG ring (10px stroke, `stroke-border-light` track, `text-pass/warning/critical stroke-current` fill, round linecap), 68px number, single 450ms ease-out count-up via `useCountUp` (skips on `prefers-reduced-motion`).
+  - `ProgressState` — lucide stage icon `h-8 w-8 text-text-muted animate-breathe`; spinner ring + percentage removed.
+  - `FindingCard` — severity badges show text labels "Pass"/"Needs work"/"Critical" (never color alone); unavailable check uses `CircleSlash` muted icon; `shadow-card` + `hover:shadow-card-hover`.
+  - `EvidenceBlock` — "Your site: not cited" `critical-light` pill rendered FIRST when `ownDomain` absent; answerText now quote-style `border-l-2 pl-3 text-[13px] italic`.
+  - `PillarBreakdown` — unavailable pillar gets muted `CircleSlash` icon + reason.
+  - `FixCard` — copied feedback 2000ms → 1500ms; card shadow/hover.
+  - Landing `app/page.tsx` — 3 steps (Globe/MessageCircle/BarChart3) with muted icons below the form.
+  - `ui-registry.md` — rewritten to reflect all new patterns.
+- Test harnesses in `C:\Users\DELL\AppData\Local\Temp\opencode\`: `third-party-test.mjs` (8 fixtures), `phase6-test.mjs` (11 fixtures), `e2e-live.mjs`, `scrape-test.mjs`, `live-single.mjs`, `live-raw.mjs`, alias loader `geoalias-loader.mjs` (points at `D:/GEO_Audit/src`).
 
 ## Decisions made
 
-- Unresolved `vertexaisearch.cloud.google.com` redirect citations must never count as a third-party domain — this fixes a real score-inflation bug (2 external domains + 1 failed resolve would have jumped 10 → 20).
-- Pillar C evidence keeps the own-domain pill when the AI cited it (highlighted via `EvidenceBlock`'s `ownDomain` prop) — parity with Pillar B's evidence; `citations` shows all resolved urls, externals counted separately.
+- Unresolved Google grounding redirect hosts (`vertexaisearch.*`) must never count as third-party domains — real score-inflation bug (2 externals + 1 failed resolve would have jumped 10 → 20).
+- Severity is never color alone — every badge pairs a visible text label.
+- Only two scale-contrast moments on the page: verdict (30px) + score (68px). Only one motion on page load: score count-up. Progress pulse is the only loop.
+- Verdict is nullable; a failed/slow verdict call never blocks the report.
 
 ## Problems solved
 
-- **Score-inflation bug:** Google grounding URIs that fail HEAD-resolution fall back to the raw redirect host in `resolveCitationUrl`; counting that host as "external" inflated the tier. Fixed by filtering trampoline hostnames before counting and before storing evidence.
-- Node TS alias loader quirk already known — plain `--loader file:///...` form, never `--import`.
+- **Gemini daily free-tier quota exhausted** on the `.env.local` key — raw API body reports `limit: 0` on `generate_content_free_tier_requests`. Not a code bug: the live E2E against `mozilla.org` completed in ~3s with Pillar A real scoring (15/100) and every Gemini check degrading to `unavailable` gracefully. Run `e2e-live.mjs` again after the daily reset (or with a fresh key) to see real Pillar B/C + verdict.
+- Stale `.next` cache causes `TypeError: a[d] is not a function` prerender errors on `/` — clear `.next` and rebuild (recurring, known).
+- Node TS alias loader: plain `--loader file:///...` form; never `--import`.
 
 ## Current state
 
-- **Phases 1–5 complete.** Pillars A (35) + B (45) + C (20) are all **100% real — zero mocks left in the codebase** (`mocks.ts` deleted).
-- lint + build green on `main`. 8 stubbed-fetch fixtures for Pillar C all pass.
-- `.env.local` has a real `GEMINI_API_KEY` set.
-- UI untouched this session → `/imprint` no-op again.
+- **Phases 1–6 complete; Phase 7 partially complete** (UI real-data pass done; **PDF export NOT built** — `ReportPdf.tsx` and `components/motion/variants.ts` do not exist; `GET /api/audit/[id]/pdf` returns 501).
+- All three pillars (A 35 + B 45 + C 20) + verdict + fixes are 100% real. Zero mocks.
+- lint + build green on `main` (build required `.next` clear this session).
+- `.env.local` has a real `GEMINI_API_KEY` but free-tier daily quota is currently exhausted.
 
 ## Next session starts with
 
-- **Phase 6 — Scoring + Fixes**: (12) build `lib/pipeline/verdict.ts` — after all three pillars complete, send a compact findings summary to Gemini (JSON mode) for one blunt plain-language sentence; stored on `Audit.verdict` (nullable — failure never blocks the report); must be checked against the total-invisibility case (build-plan 17). Currently `runAudit.ts:113` still sets a **hardcoded generic verdict string** — replace it with the real generator. (13) `computeScore` already exists/used in `runAudit` — verify pure + unit-testable. (14) `deriveFixes` already exists — verify per check, severity, impact/effort/priority mapping.
-- Then Phase 7 (real-data UI pass + PDF), Phase 8 (3–5 real businesses + README + demo).
-- **Still pending:** live E2E smoke test on a real site (run once with real Gemini now that all three pillars are real).
+- **Phase 7 — Feature 16 PDF Export**: build `components/audit/ReportPdf.tsx` (@react-pdf/renderer, light print-friendly palette per ui-rules, severity as visible text labels not color alone, mirrors hero → pillar → findings → fixes hierarchy, copy-paste snippets as plain text blocks) + wire `GET /api/audit/[id]/pdf` route (currently 501 stub) via `renderToBuffer`. Library pattern in `context/library-docs.md`.
+- Then Phase 8 (3–5 real businesses + README + demo; pick with intent per build-plan 17, record in progress-tracker Business Selection table).
+- **Still pending:** live E2E smoke test with real Gemini citations once the quota resets.
 
 ## Open questions
 

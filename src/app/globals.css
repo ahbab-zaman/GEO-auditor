@@ -50,6 +50,23 @@
   --radius-lg: 12px;
   --radius-xl: 16px;
   --radius-full: 9999px;
+
+  /* Card shadow — subtle lift only, per ui-rules/ui-tokens */
+  --shadow-card: 0px 1px 3px rgba(0, 0, 0, 0.06);
+  --shadow-card-hover: 0px 2px 6px rgba(0, 0, 0, 0.08);
+
+  /* Progress indicator — slow "breathing" opacity pulse, the site's only loop */
+  --animate-breathe: breathe 1.8s ease-in-out infinite;
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 
 body {

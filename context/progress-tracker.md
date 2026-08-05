@@ -7,9 +7,9 @@ is done, what is in progress, and what is next.
 
 ## Current Status
 
-**Phase:** Phase 6 — Scoring + Fixes (COMPLETE — 12–14 done)
-**Last completed:** 14 Fix Generation polish + pending work (per-check fix explanations)
-**Next:** Phase 7 — Report UI Polish + PDF (15 real-data pass, 16 PDF export)
+**Phase:** Phase 7 — Report UI Polish + PDF
+**Last completed:** 15 Report UI real-data pass + 16 PDF Export (ReportPdf.tsx + GET /pdf route + Download PDF button)
+**Next:** Phase 8 — Real-World Validation (17 run 3–5 businesses, 18 README + demo video)
 
 ---
 
@@ -117,13 +117,27 @@ is done, what is in progress, and what is next.
 
 ### Phase 7 — Report UI Polish + PDF
 
-- [ ] 14 Report UI — Real Data Pass
-- [ ] 15 PDF Export
+- [x] 15 Report UI — Real Data Pass
+  - [x] Real edge cases handled: `unavailable` pillar state (muted `CircleSlash` + one-line reason in `PillarBreakdown`), `unavailable` check (`FindingCard`), `absence` evidence rendering, long citation lists, empty fix list (section hidden), missing verdict (`VerdictBanner` returns null)
+  - [x] `VerdictBanner` renders first above the score ring — no card border, 30px scale-contrast, no severity tint
+  - [x] Single score count-up on the hero number only (≤450ms, ease-out cubic, `prefers-reduced-motion` honored) — no staggered entrances anywhere
+  - [x] Copy button on fixes gives explicit "Copied" feedback ~1.5s then reverts
+  - [x] Score ring + pillar bars colored by `getSeverityColor()` via static class maps (never dynamic `bg-${x}`)
+  - [x] Severity tags always pair color with a visible text label ("Pass" / "Needs work" / "Critical")
+  - [x] Jargon inline explainers live in the real per-check titles/evidence (from 14), readable in both web + PDF — no hover-only tooltips
+- [x] 16 PDF Export
+  - [x] `components/audit/ReportPdf.tsx` — `@react-pdf/renderer` document mirroring the web hierarchy (header → verdict → score → pillar breakdown → findings w/ evidence → prioritized fixes), light print-friendly palette, pillars in architecture order
+  - [x] PDF severities are text-labeled (`[Pass]` / `[Needs work]` / `[Critical]`) — not color alone, survives grayscale; own cited domain carries a plain-text `" (your site)"` marker; absent own-domain shows a red "Your site: not cited" pill
+  - [x] Copy-pasteable fix content renders as a dark `Courier` block in the PDF
+  - [x] `GET /api/audit/[id]/pdf` — loads Audit, `renderToBuffer` on demand, returns `application/pdf` download with sanitized filename; 404 if not found/not complete, 500 on render failure
+  - [x] Report page header row gains a "Download PDF" primary button (plain `<a href>` to the route)
+  - [x] Imprinted `ReportPdf` + ReportPage PDF button into `ui-registry.md`
+- [x] **Phase 7 coding complete** — web report UI polish + PDF export real. Pending only user-driven live smoke-test of the PDF route in `next dev` (see Notes).
 
 ### Phase 8 — Real-World Validation
 
-- [ ] 16 Run Against 3–5 Real Businesses
-- [ ] 17 README + Demo Video
+- [ ] 17 Run Against 3–5 Real Businesses
+- [ ] 18 README + Demo Video
 
 ---
 
@@ -179,6 +193,15 @@ each one was chosen — this is itself a product decision per build-plan.md's se
 - Feature 04 review: no functional bugs. Minor cleanup applied — mock structural pillar removed from
   `mocks.ts`, `runAudit` uses `getMockLiveAiCitation`/`getMockThirdPartyCorroboration` directly.
 - Phases 5 & 6 (post-memory): Pillar C + verdict + real fix explanations all built. `mocks.ts` deleted.
+- **Phase 7 (feature 16, PDF export):** `ReportPdf.tsx` + `GET /api/audit/[id]/pdf` implemented; report page
+  gained a "Download PDF" primary button. `/review` found and fixed one real parity bug — the PDF marked the
+  business's own cited domain by **color alone**, which fails grayscale/print parity (ui-rules "PDF Export
+  Parity"); fixed via `/recover` (Failure Mode 1, targeted fix) by adding a plain-text `" (your site)"`
+  marker to the own-domain pill. `renderToBuffer` verified working standalone (~100ms); lint + `next build`
+  pass. **Verification item:** during dev smoke-testing the `/pdf` route appeared to stall in `next dev`
+  (route compiled fine, request never resolved within ~150s) while the identical render call completed in
+  ~100ms in a plain Node harness — not confirmed as a code bug (possibly dev-bundler/react-pdf runtime
+  interaction), but worth a fresh dev-server check when testing Phase 8.
 - **Live E2E smoke test (real Gemini, `mozilla.org`):** full pipeline mechanics verified end-to-end in
   ~3s — scrape → Pillar A real scoring (15/100: ai-crawler-active 10/10 from Mozilla's real robots.txt,
   schema 0/10, faq 5/5) → score → fixes → persist → status complete. Every Gemini-backed check returned

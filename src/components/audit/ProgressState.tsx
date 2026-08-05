@@ -1,24 +1,24 @@
+import { Globe, Search } from "lucide-react";
 import type { AuditStatus } from "@/types/audit";
 
-const STAGE_LABELS: Record<Exclude<AuditStatus, "complete" | "failed">, string> = {
-  pending: "Preparing your audit",
-  scraping: "Reading your website",
-  analyzing: "Asking AI what it knows about you",
+const STAGE: Record<
+  Exclude<AuditStatus, "complete" | "failed">,
+  { label: string; Icon: typeof Globe }
+> = {
+  pending: { label: "Preparing your audit", Icon: Globe },
+  scraping: { label: "Reading your website", Icon: Globe },
+  analyzing: { label: "Asking a real AI what it knows about you", Icon: Search },
 };
 
 export function ProgressState({ status }: { status: AuditStatus }) {
-  const label =
-    status === "analyzing"
-      ? STAGE_LABELS.analyzing
-      : status === "scraping"
-        ? STAGE_LABELS.scraping
-        : STAGE_LABELS.pending;
+  const stage =
+    status === "analyzing" ? STAGE.analyzing : status === "scraping" ? STAGE.scraping : STAGE.pending;
+  const { label, Icon } = stage;
 
   return (
     <div className="flex w-full max-w-md flex-col items-center rounded-xl border border-border bg-surface p-6 text-center">
-      <div className="h-8 w-8 animate-spin rounded-full border-2 border-border border-t-accent" />
-      <p className="mt-4 text-sm font-medium text-text-primary">{label}</p>
-      <p className="mt-1 text-xs text-text-muted">This usually takes under a minute.</p>
+      <Icon className="h-8 w-8 animate-breathe text-text-muted" aria-hidden />
+      <p className="mt-4 text-sm text-text-secondary">{label}</p>
     </div>
   );
 }

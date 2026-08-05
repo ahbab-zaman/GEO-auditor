@@ -1,3 +1,4 @@
+import { CircleSlash } from "lucide-react";
 import type { PillarResult } from "@/types/audit";
 import { FindingCard } from "@/components/audit/FindingCard";
 
@@ -17,7 +18,8 @@ export function PillarBreakdown({
         </span>
       </div>
       {pillar.status === "unavailable" ? (
-        <div className="rounded-xl border border-border bg-surface p-6">
+        <div className="flex items-start gap-3 rounded-xl border border-border bg-surface p-6 shadow-card">
+          <CircleSlash className="mt-0.5 h-5 w-5 shrink-0 text-text-muted" aria-hidden />
           <p className="text-sm text-text-secondary">
             {pillar.unavailableReason ?? "This pillar could not be completed."}
           </p>
