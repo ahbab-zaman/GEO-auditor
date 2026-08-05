@@ -3,10 +3,11 @@ import type { Audit, AuditStatus, PillarResult, ScrapedPage } from "@/types/audi
 import { getAudit, saveAudit } from "@/lib/storage";
 import { computeScore } from "@/lib/pipeline/score";
 import { deriveFixes } from "@/lib/pipeline/fixes";
-import { getMockThirdPartyCorroboration } from "@/lib/pipeline/mocks";
 import { scrapeSite } from "@/lib/pipeline/scrape";
 import { runStructuralAnswerability } from "@/lib/pipeline/structuralAnswerability";
 import { runLiveAiCitation } from "@/lib/pipeline/liveAiCitation";
+import { runThirdPartyCorroboration } from "@/lib/pipeline/thirdPartyCorroboration";
+import { generateVerdict } from "@/lib/pipeline/verdict";
 
 export async function createAudit(url: string, businessName: string): Promise<Audit> {
   const audit: Audit = {
@@ -96,7 +97,10 @@ export async function runAudit(id: string): Promise<void> {
       analyzing.url,
       analyzing.scrapedPages,
     );
-    const thirdPartyCorroboration = getMockThirdPartyCorroboration();
+    const thirdPartyCorroboration = await runThirdPartyCorroboration(
+      analyzing.businessName,
+      analyzing.url,
+    );
 
     const pillars = [structuralAnswerability, liveAiCitation, thirdPartyCorroboration];
 
@@ -105,12 +109,13 @@ export async function runAudit(id: string): Promise<void> {
     const score = computeScore(pillars);
     const checks = pillars.flatMap((p) => p.checks);
     const fixes = deriveFixes(checks);
+    const verdict = await generateVerdict(analyzing.businessName, pillars);
 
     await saveAudit({
       ...completed,
       score,
       fixes,
-      verdict: `${analyzing.businessName} is currently visible to AI search engines in some ways, but has major gaps that are easy to close.`,
+      verdict,
       status: "complete",
       completedAt: new Date().toISOString(),
     });

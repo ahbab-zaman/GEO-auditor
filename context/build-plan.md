@@ -29,7 +29,8 @@ locked in before any real checker is written.
 
 **UI:**
 - `/` — business name input, URL input, Run Audit button
-- `/audit/[id]` — polling state (spinner + stage label), then full report render once `status: complete`
+- `/audit/[id]` — polling state (icon + stage label, pulse animation per ui-tokens.md's Progress
+  Indicator), then full report render once `status: complete`
 - Score hero — total /100, three pillar bars
 - Findings list grouped by pillar — finding text, evidence block (styled by evidence type), severity tag
 - Fix list — sorted by priorityScore, impact/effort badges, copy button on any fix with `copyPasteContent`
@@ -171,15 +172,24 @@ locked in before any real checker is written.
 
 **UI:**
 - Replace mock rendering assumptions with real edge cases: `unavailable` pillar state, `absence` evidence rendering, long citation lists, empty fix lists, missing verdict
-- `VerdictBanner` renders first, above the score ring, per ui-rules.md
-- Animated score ring count-up + staggered findings entrance via framer-motion, per library-docs.md
+- `VerdictBanner` renders first, above the score ring, styled per ui-rules.md and ui-tokens.md's
+  Verdict Banner component tokens — no card border, scale-contrast typography, no severity color tint
+- Single score count-up animation on the hero number only (≤500ms, ease-out, fires once) — per
+  ui-tokens.md's Score Ring component tokens. **Do not** stagger the findings list, fix list, or any
+  other element into view — one motion moment on the page load is the ceiling, not a starting point
+- Progress state (`/audit/[id]` pre-completion) uses the pulse animation defined in ui-tokens.md's
+  Progress Indicator tokens — no spinner ring, no percentage bar
+- Copy button on fix cards gives explicit "Copied" feedback for ~1.5s per ui-tokens.md
 - Score ring/bar colored by range (reuse pattern from ui-tokens.md)
+- Severity tags always pair color with a visible text label ("Pass" / "Needs work" / "Critical") — never color alone
 - Jargon terms rendered with inline explainer text, not a separate glossary page or hover-only tooltip (must also work in the static PDF)
 
 ### 16 PDF Export
 
 **Logic:**
 - `components/audit/ReportPdf.tsx` — `@react-pdf/renderer` document mirroring the web report layout, using the light print-friendly palette per ui-rules.md
+- Severity communicated via visible text labels in the PDF too (not color alone), since it may be
+  viewed in grayscale or printed
 - `GET /api/audit/[id]/pdf` — loads Audit JSON, renders via `renderToBuffer`, returns as `application/pdf` download
 - No storage of the PDF itself — generated on demand each time
 

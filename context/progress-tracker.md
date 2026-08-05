@@ -7,9 +7,9 @@ is done, what is in progress, and what is next.
 
 ## Current Status
 
-**Phase:** Phase 4 — Live AI Citation Test (COMPLETE — 08–10 done)
-**Last completed:** 10 Brand Recall + Citation Rate + Accuracy Scoring
-**Next:** Phase 5 — 11 Third-Party Corroboration (replace the Pillar C mock)
+**Phase:** Phase 6 — Scoring + Fixes (COMPLETE — 12–14 done)
+**Last completed:** 14 Fix Generation polish + pending work (per-check fix explanations)
+**Next:** Phase 7 — Report UI Polish + PDF (15 real-data pass, 16 PDF export)
 
 ---
 
@@ -86,12 +86,34 @@ is done, what is in progress, and what is next.
 
 ### Phase 5 — Third-Party Corroboration (Pillar C)
 
-- [ ] 11 External Presence Check
+- [x] 11 External Presence Check
+  - [x] `lib/pipeline/thirdPartyCorroboration.ts` — `runThirdPartyCorroboration(businessName, url)`:
+  - [x] One grounded query `"What do people say about [businessName] ([url])? Cite your sources."` via `geminiGroundedQuery`
+  - [x] Every citation resolved via the shared `resolveCitationUrl` cache (HEAD + follow redirects); deduped
+  - [x] `RESOLVER_TRAMPOLINES = ["vertexaisearch.cloud.google.com", "vertexaisearch.googleapis.com"]` — unresolved Google grounding redirect hosts are dropped from the count AND evidence so they can never inflate the external-domain tier (fixes a real score-inflation bug found during fixture testing)
+  - [x] Own domain filtered out (business's own site never counts as third-party); remaining distinct external domains counted
+  - [x] Scoring: 20 if 3+ external domains, 10 if 1–2, 0 if none; severity pass/warning/critical via same `severityFor` pattern as Pillar B
+  - [x] Evidence: `citations` (query + verbatim answerText + resolved citedUrls + businessCited) when externals found; `absence` evidence when none; grounded-query failure → pillar `unavailable` with human reason
+  - [x] `runAudit.ts` — `await runThirdPartyCorroboration(...)` replaces the mock
+  - [x] **`mocks.ts` deleted outright** — no mocks remain anywhere in the codebase
+  - [x] Verified against 8 stubbed-fetch fixtures (3+ externals, 1–2, single, own-only, empty, dedupe+filter, trampoline-not-inflating, query-fail unavailable) — all pass
 
 ### Phase 6 — Scoring + Fixes
 
-- [ ] 12 Score Aggregation
-- [ ] 13 Fix Generation
+- [x] 12 Verdict Generation
+  - [x] `lib/pipeline/verdict.ts` — `generateVerdict(businessName, pillars)` via `geminiJson` (temp 0.3), zod `VerdictSchema`
+  - [x] Runs strictly after all three pillars complete (called on finished `pillars` array in `runAudit`, never before)
+  - [x] Prompt sends per-pillar findings (not just the total score) and explicitly requires business-specific language even at near-zero scores — total-invisibility case covered per build-plan 17
+  - [x] Nullable: any failure (API error, malformed/wrong-shape JSON) returns `null`, never throws, never blocks the report; `VerdictBanner` renders nothing when null
+  - [x] `runAudit.ts` — hardcoded verdict string replaced with the real generator
+  - [x] Verified against 3 stubbed fixtures (success, API failure → null, malformed shape → null) — all pass
+- [x] 13 Score Aggregation
+  - [x] `lib/pipeline/score.ts` — pure `computeScore(pillars)` already existed and is correct: sums per-pillar `pointsEarned`/`pointsPossible`; no external calls; `maxTotal` 100; unavailable pillars earn 0 but still count in the denominator
+- [x] 14 Fix Generation
+  - [x] `lib/pipeline/fixes.ts` — one fix per non-pass check; `impact` from `pointsPossible` (≥15 → high, else medium); `effort` from `EFFORT_BY_CHECK_ID` lookup; `priorityScore` = impact÷effort; sorted desc; `copyPasteContent` only for literal snippets
+  - [x] **Polish:** placeholder explanations replaced with real per-check `TITLE_BY_CHECK_ID` + `EXPLANATION_BY_CHECK_ID` for all 8 check ids (plain-language, business-owner-facing)
+  - [x] Verified against stubbed fixtures (fix count, sort order, unique ids, copy-paste presence, impact mapping) — all pass
+- [x] **Phase 6 complete — Scoring + Fixes fully real.** All three pillars (A 35 + B 45 + C 20) and the verdict are now 100% real. Zero mocks in the codebase.
 
 ### Phase 7 — Report UI Polish + PDF
 
@@ -156,3 +178,13 @@ each one was chosen — this is itself a product decision per build-plan.md's se
   (per code-structure.md's labeling rule, no dead mock path remains).
 - Feature 04 review: no functional bugs. Minor cleanup applied — mock structural pillar removed from
   `mocks.ts`, `runAudit` uses `getMockLiveAiCitation`/`getMockThirdPartyCorroboration` directly.
+- Phases 5 & 6 (post-memory): Pillar C + verdict + real fix explanations all built. `mocks.ts` deleted.
+- **Live E2E smoke test (real Gemini, `mozilla.org`):** full pipeline mechanics verified end-to-end in
+  ~3s — scrape → Pillar A real scoring (15/100: ai-crawler-active 10/10 from Mozilla's real robots.txt,
+  schema 0/10, faq 5/5) → score → fixes → persist → status complete. Every Gemini-backed check returned
+  429 this run and degraded to `unavailable` with a human reason (as designed — the build-plan 17
+  "free-tier rate limit" edge case handled correctly). However, the `.env.local` key's **daily free-tier
+  quota is exhausted** (`limit: 0` on `generate_content_free_tier_requests`, persisted across 60s+), so
+  the live *answer/citation* path (Pillar B/C scoring, verdict) could not be exercised. Run
+  `e2e-live.mjs` again after the quota resets (or with a fresh key) to see real citations. Harness:
+  `C:\Users\DELL\AppData\Local\Temp\opencode\e2e-live.mjs`.
