@@ -27,7 +27,13 @@ export default function AuditReportPage() {
     async function poll() {
       try {
         const response = await fetch(`/api/audit/${id}`);
-        const json = await response.json();
+        let json: { success?: boolean; data?: Audit; error?: string };
+        try {
+          json = await response.json();
+        } catch {
+          if (!cancelled) setError("Could not read the audit response.");
+          return;
+        }
         if (!json.success) {
           if (!cancelled) setError(json.error ?? "Could not load audit");
           return;

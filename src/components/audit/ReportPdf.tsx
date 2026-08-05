@@ -1,28 +1,47 @@
 import React from "react";
 import { Document, Page, Text, View, StyleSheet } from "@react-pdf/renderer";
 import type { Audit, CheckResult, Fix, PillarResult } from "@/types/audit";
+import { getSeverityColor } from "@/lib/utils";
 
 const styles = StyleSheet.create({
   page: {
-    padding: 32,
+    padding: 40,
     fontSize: 11,
     lineHeight: 1.5,
     color: "#12141c",
   },
-  headerTitle: { fontSize: 13, fontWeight: 700, color: "#12141c" },
-  scoreHeading: { fontSize: 13, fontWeight: 700, color: "#12141c", marginTop: 16 },
-  meta: { fontSize: 10, color: "#9498a8", marginTop: 2 },
+  docTitle: { fontSize: 12, fontWeight: 700, color: "#9498a8" },
+  businessTitle: { fontSize: 24, fontWeight: 700, color: "#12141c", marginTop: 12 },
+  businessUrl: { fontSize: 11, color: "#9498a8", marginTop: 2 },
   verdict: {
     fontSize: 20,
     fontWeight: 600,
     lineHeight: 28,
     color: "#12141c",
-    marginTop: 16,
+    marginTop: 20,
   },
-  sectionHeading: { fontSize: 13, fontWeight: 700, color: "#12141c", marginTop: 20, marginBottom: 4 },
-  subHeading: { fontSize: 11, fontWeight: 600, color: "#12141c", marginTop: 12 },
+  scoreBlock: { flexDirection: "row", marginTop: 20 },
+  scoreNumber: { fontSize: 40, fontWeight: 700, color: "#12141c" },
+  scoreMeta: { fontSize: 12, color: "#9498a8", marginTop: 26, marginLeft: 6 },
+  scoreBars: { flex: 1, marginLeft: 28, justifyContent: "center" },
+  scoreBarRow: { marginBottom: 10 },
+  scoreBarLabel: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    fontSize: 10,
+    color: "#9498a8",
+  },
+  barTrack: {
+    marginTop: 3,
+    height: 8,
+    backgroundColor: "#eef0f6",
+    borderRadius: 999,
+  },
+  barFill: { height: 8, borderRadius: 999 },
+  sectionHeading: { fontSize: 14, fontWeight: 700, color: "#12141c", marginTop: 24, marginBottom: 4 },
+  subHeading: { fontSize: 12, fontWeight: 600, color: "#12141c", marginTop: 14 },
   text: { fontSize: 10, color: "#565b6e", marginTop: 2 },
-  finding: { marginTop: 10 },
+  finding: { marginTop: 12 },
   findingRow: { flexDirection: "row", alignItems: "center" },
   findingTitle: { fontSize: 11, fontWeight: 600, color: "#12141c" },
   evidence: {
@@ -61,7 +80,7 @@ const styles = StyleSheet.create({
     padding: 10,
     marginTop: 8,
   },
-  fix: { marginTop: 10 },
+  fix: { marginTop: 12 },
   copyBlock: {
     backgroundColor: "#1f1f1f",
     borderRadius: 6,
@@ -209,6 +228,39 @@ function PillarSection({
   );
 }
 
+// Mirrors the on-screen ScoreHero: score on a 100 scale + one progress bar per pillar.
+function ScoreSection({ score, maxTotal, pillars }: { score: number; maxTotal: number; pillars: PillarResult[] }) {
+  const barColor = SEVERITY_COLOR[getSeverityColor(score)];
+  return (
+    <View style={styles.scoreBlock}>
+      <View>
+        <Text style={styles.scoreNumber}>{score}</Text>
+        <Text style={styles.scoreMeta}>/ {maxTotal}</Text>
+      </View>
+      <View style={styles.scoreBars}>
+        {pillars.map((pillar) => {
+          const percent = pillar.pointsPossible
+            ? Math.round((pillar.pointsEarned / pillar.pointsPossible) * 100)
+            : 0;
+          return (
+            <View key={pillar.key} style={styles.scoreBarRow}>
+              <View style={styles.scoreBarLabel}>
+                <Text>{pillar.label}</Text>
+                <Text>
+                  {pillar.pointsEarned} / {pillar.pointsPossible}
+                </Text>
+              </View>
+              <View style={styles.barTrack}>
+                <View style={[styles.barFill, { width: `${percent}%`, backgroundColor: barColor }]} />
+              </View>
+            </View>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
 function FixSection({ fix }: { fix: Fix }) {
   return (
     <View style={styles.finding}>
@@ -242,31 +294,31 @@ export function ReportPdf({ audit }: { audit: Audit }) {
     }
   })();
 
+  const pillars = PILLAR_ORDER.map((key) => audit.pillars[key]);
+
   return (
     <Document>
       <Page size="A4" style={styles.page}>
-        <View>
-          <Text style={styles.headerTitle}>GEO Auditor — AI Visibility Report</Text>
-          <Text style={styles.meta}>{audit.businessName}</Text>
-          <Text style={styles.meta}>{audit.url}</Text>
-        </View>
+        <Text style={styles.docTitle}>GEO Auditor — AI Visibility Report</Text>
+        <Text style={styles.businessTitle}>{audit.businessName}</Text>
+        <Text style={styles.businessUrl}>{audit.url}</Text>
 
         {audit.verdict && <Text style={styles.verdict}>{audit.verdict}</Text>}
 
-        <View style={{ marginTop: 16 }}>
-          <Text style={styles.scoreHeading}>
-            Overall score: {audit.score.total} / {audit.score.maxTotal}
-          </Text>
-        </View>
+        <ScoreSection
+          score={audit.score.total}
+          maxTotal={audit.score.maxTotal}
+          pillars={pillars}
+        />
 
-        <Text style={styles.scoreHeading}>Pillar breakdown</Text>
-        {PILLAR_ORDER.map((key) => (
-          <PillarSection key={key} pillar={audit.pillars[key]} ownDomain={ownDomain} />
+        <Text style={styles.sectionHeading}>Pillar breakdown</Text>
+        {pillars.map((pillar) => (
+          <PillarSection key={pillar.key} pillar={pillar} ownDomain={ownDomain} />
         ))}
 
         {audit.fixes.length > 0 && (
-          <View style={{ marginTop: 20 }}>
-            <Text style={styles.scoreHeading}>Prioritized fixes</Text>
+          <View style={{ marginTop: 24 }}>
+            <Text style={styles.sectionHeading}>Prioritized fixes</Text>
             {audit.fixes.map((fix) => (
               <FixSection key={fix.id} fix={fix} />
             ))}

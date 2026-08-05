@@ -279,7 +279,7 @@ Return JSON exactly matching: { "hasDirectAnswer": boolean, "extractedSentence":
 
     const raw = await geminiJson<z.infer<typeof DirectAnswerExtractionSchema>>(prompt, 0);
     const parsed = DirectAnswerExtractionSchema.safeParse(raw);
-    if (!parsed.success) throw new Error("Gemini returned malformed direct-answer JSON");
+    if (!parsed.success) throw new Error("Model returned malformed direct-answer JSON");
 
     const { hasDirectAnswer, extractedSentence } = parsed.data;
 

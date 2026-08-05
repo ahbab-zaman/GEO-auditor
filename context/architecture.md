@@ -190,16 +190,17 @@ could not be completed and why — never silently dropped from the denominator.
 |---|---|---|
 | Target website (fetch + cheerio) | Stage 1 scrape | If homepage fetch fails, audit fails entirely — nothing to score |
 | `{url}/robots.txt` | AI crawler access check | Missing robots.txt = treated as "all crawlers allowed" (correct default), not an error |
-| Google Gemini (`gemini-2.0-flash`, Search grounding) | Live AI citation test + third-party corroboration | Pillar marked unavailable, rest of audit still completes |
-| Google Gemini (`gemini-2.0-flash`, JSON mode, no grounding) | Direct-answer clarity grading, query generation, verdict generation | Check/stage marked unavailable, rest of pipeline still completes |
+| OpenRouter (`openrouter/free`, `web` plugin) | Live AI citation test + third-party corroboration | Pillar marked unavailable, rest of audit still completes |
+| OpenRouter (`openrouter/free`, no web plugin) | Direct-answer clarity grading, query generation, verdict generation | Check/stage marked unavailable, rest of pipeline still completes |
 
-Single provider by design — see project-overview.md "Why Gemini, Not a Paid Engine." One `GEMINI_API_KEY`
-covers every AI call in the pipeline; grounding is toggled per-call via the `tools` parameter, not via a
-separate provider.
+Single provider by design — one `OPENROUTER_API_KEY` covers every AI call; the `web` plugin is toggled
+per-call via `plugins`, not via a separate provider. Note: the free route typically does NOT support
+the `web` plugin, so the two citation pillars may report `unavailable` until `OPENROUTER_MODEL` points
+at a web-search-capable paid model.
 
-**Free-tier rate limiting:** Gemini's free tier caps requests per minute. Stage 3 and Stage 4 calls are
-executed **sequentially, not in parallel** (`for` loop with `await`, not `Promise.all`) specifically to
-stay under this limit reliably — see library-docs.md for the exact pattern. This is a deliberate
+**Rate limiting / latency:** OpenRouter free routes can be slow and occasionally rate-limit. Stage 3 and
+Stage 4 calls are executed **sequentially, not in parallel** (`for` loop with `await`, not `Promise.all`)
+specifically to keep the run stable on a backed-up route — see library-docs.md for the exact pattern. This is a deliberate
 tradeoff of a few seconds of extra pipeline time for reliability on every run.
 
 ---
@@ -212,7 +213,7 @@ it needs from this alone — every path below either already exists at the end o
 
 ```
 geo-auditor/
-├── .env.local                        → GEMINI_API_KEY (gitignored)
+├── .env.local                        → OPENROUTER_API_KEY, OPENROUTER_MODEL (gitignored)
 ├── .env.example                      → checked in, documents required vars with no real values
 ├── .gitignore                        → node_modules, .next, .env.local, /data/audits/*.json
 ├── next.config.ts
@@ -283,4 +284,4 @@ geo-auditor/
 - If a file's purpose isn't obvious from this list, check code-structure.md's naming conventions before creating a new one — don't guess a new location for something that already has a defined home here.
 - `schemas/` (zod) and `types/` (TypeScript types) are intentionally separate — types describe shape at compile time, schemas validate shape at runtime for anything crossing an external boundary (API request bodies, Gemini responses). Do not merge them into one file.
 - `components/motion/variants.ts` is the only shared animation file — see ui-rules.md for why per-component variants are otherwise preferred.
-- Nothing outside `lib/pipeline/` and `lib/gemini.ts` should ever import `GEMINI_API_KEY` directly — route through the pipeline layer.
+- Nothing outside `lib/pipeline/` and `lib/gemini.ts` should ever import `OPENROUTER_API_KEY` directly — route through the pipeline layer.

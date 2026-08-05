@@ -134,10 +134,10 @@ Return JSON exactly matching: { "queries": [{ "type": "category" | "direct", "te
   try {
     const raw = await geminiJson<z.infer<typeof QueryGenerationSchema>>(prompt, 0.3);
     const parsed = QueryGenerationSchema.safeParse(raw);
-    if (!parsed.success) throw new Error("Gemini returned malformed query-generation JSON");
+    if (!parsed.success) throw new Error("Model returned malformed query-generation JSON");
 
     const queries = parsed.data.queries.filter((q) => q.text.trim().length > 0);
-    if (queries.length < 3) throw new Error("Gemini returned too few queries");
+    if (queries.length < 3) throw new Error("Model returned too few queries");
 
     return queries;
   } catch (error) {
@@ -319,7 +319,7 @@ Return JSON exactly matching: { "consistent": boolean, "contradictions": [string
 
   const raw = await geminiJson<z.infer<typeof DescriptionAccuracySchema>>(prompt, 0);
   const parsed = DescriptionAccuracySchema.safeParse(raw);
-  if (!parsed.success) throw new Error("Gemini returned malformed accuracy JSON");
+  if (!parsed.success) throw new Error("Model returned malformed accuracy JSON");
 
   if (parsed.data.consistent) return 1;
   return parsed.data.contradictions.length === 0 ? 0.5 : 0;

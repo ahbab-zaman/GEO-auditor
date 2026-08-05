@@ -17,7 +17,7 @@ GEO Auditor tells a business owner whether they actually exist inside AI-generat
 - **Styling**: Tailwind CSS v4 + shadcn/ui, tokens via `@theme` in `globals.css`
 - **Validation**: zod — all untrusted external data (API bodies, Gemini responses, JSON-LD)
 - **Scraping**: cheerio (static fetch only — no Playwright/Puppeteer)
-- **AI Provider**: Google Gemini (`gemini-2.0-flash`), raw `fetch`, no SDK — single provider by design
+- **AI Provider**: OpenRouter (`openrouter/free` default via `OPENROUTER_MODEL`), raw `fetch`, no SDK — single provider by design
 - **PDF**: `@react-pdf/renderer`
 - **Animation**: framer-motion
 - **Icons**: lucide-react
@@ -49,7 +49,7 @@ This project uses a **`/src` layout**. All application code lives under `src/`; 
 ├── next.config.ts
 ├── tsconfig.json                  → strict: true, "@/*" → "./src/*"
 ├── package.json
-├── .env.local                     → GEMINI_API_KEY (gitignored)
+├── .env.local                     → OPENROUTER_API_KEY, OPENROUTER_MODEL (gitignored)
 ├── .env.example
 └── src/
     ├── app/
@@ -135,7 +135,7 @@ No navbar, no multi-page app shell, no settings page. Do not add pages beyond th
 
 ## 6. Pipeline (server-side only)
 
-Orchestrated by `src/lib/pipeline/runAudit.ts`, 7 stages, each wrapped in its own try/catch so one pillar failing never crashes the run. Full stage order and data flow: `context/architecture.md`. Never call Gemini or the scraper from a Client Component — nothing outside `lib/pipeline/` and `lib/gemini.ts` imports `GEMINI_API_KEY` directly.
+Orchestrated by `src/lib/pipeline/runAudit.ts`, 7 stages, each wrapped in its own try/catch so one pillar failing never crashes the run. Full stage order and data flow: `context/architecture.md`. Never call the AI provider or the scraper from a Client Component — nothing outside `lib/pipeline/` and `lib/gemini.ts` imports `OPENROUTER_API_KEY` directly.
 
 ---
 
@@ -182,7 +182,7 @@ All in `skills/`. Use them — don't skip them because a task feels small.
 - `npm run build` — production build
 - `npm run lint` — lint
 
-Requires only `GEMINI_API_KEY` in `.env.local` — no other services to run, under 5 minutes to get going per the project's own scoping decision.
+Requires only `OPENROUTER_API_KEY` in `.env.local` — no other services to run, under 5 minutes to get going per the project's own scoping decision.
 
 ---
 
@@ -210,6 +210,6 @@ Only one AI provider key exists in this project by design. Never add `OPENAI_API
 ## 13. Security
 
 - No auth, no accounts, no sessions — nothing to secure on that front.
-- `GEMINI_API_KEY` never hardcoded, never logged, never sent to the client — only read inside `src/lib/gemini.ts`.
-- All scraped HTML, JSON-LD, and Gemini responses are untrusted input — validate with zod before treating as typed data, never `JSON.parse()` directly into a trusted type.
+- `OPENROUTER_API_KEY` never hardcoded, never logged, never sent to the client — only read inside `src/lib/gemini.ts`.
+- All scraped HTML, JSON-LD, and AI model responses are untrusted input — validate with zod before treating as typed data, never `JSON.parse()` directly into a trusted type.
 - Never log a raw API key or `.env` value to the console or to `memory.md`.

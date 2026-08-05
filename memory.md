@@ -33,7 +33,7 @@ Last updated: 2026-08-06
 
 ## Problems solved
 
-- **Gemini daily free-tier quota exhausted** on the `.env.local` key — raw API body reports `limit: 0` on `generate_content_free_tier_requests`. Not a code bug: the live E2E against `mozilla.org` completed in ~3s with Pillar A real scoring (15/100) and every Gemini check degrading to `unavailable` gracefully. Run `e2e-live.mjs` again after the daily reset (or with a fresh key) to see real Pillar B/C + verdict.
+- **AI provider swapped Gemini → OpenRouter** (this session): `lib/gemini.ts` now calls OpenRouter `chat/completions` with `Authorization: Bearer $OPENROUTER_API_KEY`, model from `OPENROUTER_MODEL` (default `openrouter/free`). `geminiJson` works fully on free; `geminiGroundedQuery` uses the `web` plugin, which free models don't support → Pillar B/C report `unavailable` until `OPENROUTER_MODEL` points at a web-capable paid model (e.g. `openrouter/auto`). Exported names unchanged; pipeline callers untouched.
 - Stale `.next` cache causes `TypeError: a[d] is not a function` prerender errors on `/` — clear `.next` and rebuild (recurring, known).
 - Node TS alias loader: plain `--loader file:///...` form; never `--import`.
 
@@ -42,14 +42,14 @@ Last updated: 2026-08-06
 - **Phases 1–6 complete; Phase 7 partially complete** (UI real-data pass done; **PDF export NOT built** — `ReportPdf.tsx` and `components/motion/variants.ts` do not exist; `GET /api/audit/[id]/pdf` returns 501).
 - All three pillars (A 35 + B 45 + C 20) + verdict + fixes are 100% real. Zero mocks.
 - lint + build green on `main` (build required `.next` clear this session).
-- `.env.local` has a real `GEMINI_API_KEY` but free-tier daily quota is currently exhausted.
+- `.env.local` has a real `OPENROUTER_API_KEY` with `OPENROUTER_MODEL=openrouter/free` (no Gemini key anymore).
 
 ## Next session starts with
 
 - **Phase 7 — Feature 16 PDF Export**: build `components/audit/ReportPdf.tsx` (@react-pdf/renderer, light print-friendly palette per ui-rules, severity as visible text labels not color alone, mirrors hero → pillar → findings → fixes hierarchy, copy-paste snippets as plain text blocks) + wire `GET /api/audit/[id]/pdf` route (currently 501 stub) via `renderToBuffer`. Library pattern in `context/library-docs.md`.
 - Then Phase 8 (3–5 real businesses + README + demo; pick with intent per build-plan 17, record in progress-tracker Business Selection table).
-- **Still pending:** live E2E smoke test with real Gemini citations once the quota resets.
+- **Still pending:** live E2E smoke test on OpenRouter free (expect Pillar A real, Pillar B/C `unavailable` until a web-capable paid model is set).
 
 ## Open questions
 
-- None blocking. Per library-docs.md, re-verify the `gemini-2.0-flash` model/endpoint against Google's docs when the live Gemini path is exercised.
+- None blocking. When a paid web-capable OpenRouter model is set, verify the `web` plugin citation shape against OpenRouter's current docs.

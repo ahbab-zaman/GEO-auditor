@@ -20,7 +20,12 @@ export function AuditForm() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url, businessName }),
       });
-      const json = await response.json();
+      let json: { success?: boolean; data?: { id?: string }; error?: string };
+      try {
+        json = await response.json();
+      } catch {
+        json = { success: false, error: "The server returned an unreadable response." };
+      }
       if (!json.success || !json.data?.id) {
         setError(json.error ?? "Something went wrong. Please try again.");
         setLoading(false);

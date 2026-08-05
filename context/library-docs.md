@@ -146,16 +146,18 @@ function parseAiCrawlerAccess(robotsTxt: string | null): {
 
 ---
 
-## Google Gemini API (free tier)
+## OpenRouter API (free model route)
 
-**Why this provider:** the only mainstream AI API with (a) real-time Google Search grounding that
-returns actual citation URLs, and (b) a genuinely free tier with no card required, via
-[Google AI Studio](https://aistudio.google.com). This is the single AI provider for the entire
-project — one `GEMINI_API_KEY`, no OpenAI/Perplexity dependency. See project-overview.md "Why Gemini,
-Not a Paid Engine" for the reasoning.
+**Why this provider:** OpenRouter is a single API key over many models, with a free `openrouter/free`
+route. `geminiJson` (reasoning over given text) works fully on the free route. Live web-search
+grounding uses OpenRouter's `web` plugin, which **only works on web-search-capable (paid) models** —
+the free route generally does not support it, in which case the grounded queries throw and the two
+citation pillars report `unavailable` rather than fabricating citations. One `OPENROUTER_API_KEY`
+key, awarded by `OPENROUTER_MODEL` (defaults to `openrouter/free`).
 
-**Check first:** verify the current model name and endpoint shape against Google's docs before relying
-fully on this snippet — model names on this API are versioned and get superseded over time.
+**Check first:** swap `OPENROUTER_MODEL` to a web-search-capable paid route (e.g. `openrouter/auto`)
+to enable the citation pillars. Verify the `plugins` id stays `"web"` against OpenRouter's current
+docs.
 
 ### Client setup — plain JSON mode (no grounding)
 
@@ -163,45 +165,40 @@ Used for extraction/grading/generation tasks where the model reasons over text i
 given, not tasks that need it to search the live web.
 
 ```typescript
-// lib/gemini.ts
+// lib/gemini.ts (named historically; exported names unchanged)
 
-const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
-const MODEL = "gemini-2.0-flash";
+const OPENROUTER_CHAT_URL = "https://openrouter.ai/api/v1/chat/completions";
+const MODEL = process.env.OPENROUTER_MODEL ?? "openrouter/free";
 
 export async function geminiJson<T>(prompt: string, temperature = 0): Promise<T> {
-  const response = await fetch(
-    `${GEMINI_BASE}/${MODEL}:generateContent?key=${process.env.GEMINI_API_KEY}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: {
-          responseMimeType: "application/json",
-          temperature,
-        },
-      }),
+  const response = await fetch(OPENROUTER_CHAT_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
     },
-  );
+    body: JSON.stringify({
+      model: MODEL,
+      messages: [{ role: "user", content: prompt }],
+    }),
+  });
   if (!response.ok) {
-    throw new Error(`Gemini API error: ${response.status}`);
+    throw new Error(`OpenRouter API error: ${response.status}`);
   }
   const data = await response.json();
-  const text: string | undefined = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) throw new Error("Gemini returned no content");
-  const cleaned = text.replace(/^```json\s*/i, "").replace(/```\s*$/, "").trim();
+  const content: string | undefined = data.choices?.[0]?.message?.content;
+  if (!content) throw new Error("OpenRouter returned no content");
+  const cleaned = content.trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
   return JSON.parse(cleaned) as T;
 }
 ```
 
 **Rules:**
-- Model is always `gemini-2.0-flash` for this project — free-tier eligible, fast, supports both JSON
-  mode and Search grounding
-- Gemini's JSON mode occasionally still wraps output in markdown fences despite
-  `responseMimeType: "application/json"` — always strip fences defensively before `JSON.parse`, as
-  shown above, rather than assuming clean output
-- Always validate the parsed result with `zod` before use — a model can return well-formed-but-wrong-
-  shaped JSON even in JSON mode
+- `OPENROUTER_API_KEY` is the only key; `OPENROUTER_MODEL` selects the route (default
+  `openrouter/free`)
+- No guaranteed JSON mode at the transport level, so **always strip markdown fences before
+  `JSON.parse`** and validate the result with `zod` before use — a model can return well-formed-but-
+  wrong-shaped JSON even with a JSON-shaped prompt
 
 ### Grounded search query — live AI citation test
 
@@ -212,44 +209,43 @@ export type GroundedResult = {
 };
 
 export async function geminiGroundedQuery(prompt: string): Promise<GroundedResult> {
-  const response = await fetch(
-    `${GEMINI_BASE}/${MODEL}:generateContent?key=${process.env.GEMINI_API_KEY}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
-        tools: [{ google_search: {} }],
-      }),
+  const response = await fetch(OPENROUTER_CHAT_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
     },
-  );
+    body: JSON.stringify({
+      model: MODEL,
+      messages: [{ role: "user", content: prompt }],
+      plugins: [{ id: "web", max_results: 5 }],
+    }),
+  });
   if (!response.ok) {
-    throw new Error(`Gemini API error: ${response.status}`);
+    throw new Error(`OpenRouter API error: ${response.status}`);
   }
   const data = await response.json();
-  const candidate = data.candidates?.[0];
-  const answerText: string =
-    candidate?.content?.parts?.map((p: { text?: string }) => p.text ?? "").join("") ?? "";
-  const chunks = candidate?.groundingMetadata?.groundingChunks ?? [];
-  const citedUrls: string[] = chunks
-    .map((c: { web?: { uri?: string } }) => c.web?.uri)
-    .filter((u: string | undefined): u is string => Boolean(u));
-  return { answerText, citedUrls };
+  const content: string = data.choices?.[0]?.message?.content ?? "";
+  const citations: string[] =
+    (data.choices?.[0]?.message?.citations ?? [])
+      .map((c: { url?: string }) => c.url)
+      .filter((u: string | undefined): u is string => Boolean(u));
+  return { answerText: content, citedUrls: citations };
 }
 ```
 
 **Rules:**
-- Grounded queries (`tools: [{ google_search: {} }]`) are used **only** for Pillar B (live citation
-  test) and Pillar C (third-party corroboration) — these are the two checks that need real citation
-  URLs. Plain `geminiJson` (no grounding) is used everywhere else — grounding adds latency and eats
-  free-tier quota faster, and reasoning-over-given-text tasks don't need it
+- Grounded `web` plugins are used **only** for Pillar B (live citation test) and Pillar C (third-party
+  corroboration). Plain `geminiJson` is used everywhere else — web search adds latency and the free
+  route can't do it anyway
+- On the free route an unsupported-web model throws → those two pillars report `unavailable` with a
+  clear reason, never fabricate citations (this is intentional, see option-1 decision)
 - `answerText` is not a nice-to-have — it is stored as-is on the `Evidence` object and rendered
-  verbatim in the report. It is the single most persuasive artifact the tool produces (see
-  project-overview.md differentiators) — never discard it in favor of just the citation list
-- The free tier is rate-limited per minute. **Sequence Stage 3 and Stage 4 calls with a plain `for`
-  loop and `await`, never `Promise.all`** — firing grounded queries in parallel is the single most
-  likely way to blow the rate limit mid-audit
-- Wrap every call in try/catch — a rate limit hit marks that pillar `unavailable` with a human-readable
+  verbatim in the report. It is the single most persuasive artifact the tool produces — never discard
+  it in favor of just the citation list
+- **Sequence Stage 3 and Stage 4 calls with a plain `for` loop and `await`, never `Promise.all`** — a
+  slow/backed-up free route is the single most likely way to fail mid-audit; sequential keeps it stable
+- Wrap every call in try/catch — a failure marks that pillar `unavailable` with a human-readable
   reason, never crashes the audit
 
 ### Resolving grounding redirect URLs to real domains

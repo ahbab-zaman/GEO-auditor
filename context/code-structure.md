@@ -190,11 +190,11 @@ exactly what to provide — this is what makes the "under 5 minutes to run" requ
 
 | Variable | Used In |
 |---|---|
-| `GEMINI_API_KEY` | `lib/gemini.ts` — the only AI provider in this project, free tier via Google AI Studio |
+| `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` | `lib/gemini.ts` — the single AI provider, OpenRouter (default route `openrouter/free`) |
 
-Only one AI provider key exists in this project by design — see project-overview.md "Why Gemini, Not a
-Paid Engine." Do not add `OPENAI_API_KEY`, `PERPLEXITY_API_KEY`, or any other AI provider key without
-first updating library-docs.md and architecture.md's integrations table.
+Only one AI provider key exists in this project by design. Do not add `GEMINI_API_KEY`, `OPENAI_API_KEY`,
+`PERPLEXITY_API_KEY`, or any other AI provider key without first updating library-docs.md and
+architecture.md's integrations table.
 
 ---
 
@@ -267,7 +267,7 @@ Approved dependencies for this project:
 - `shadcn/ui` components — UI primitives
 - `nanoid` — audit id generation
 
-No AI provider SDK is installed — Gemini is called via plain `fetch` in `lib/gemini.ts` (see
+No AI provider SDK is installed — OpenRouter is called via plain `fetch` in `lib/gemini.ts` (see
 library-docs.md). This keeps the dependency footprint minimal and avoids an SDK version treadmill for
 a single, narrow usage pattern.
 
