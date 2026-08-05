@@ -19,9 +19,31 @@ import { generateVerdict } from "@/lib/pipeline/verdict";
 // 300s on Pro) so the lock never outlives the function that holds it.
 export const STEP_LOCK_MS = Number(process.env.STEP_LOCK_MS ?? 55_000);
 
-// Live-AI is the longest pillacted step. Allow cap via env so deployments with a tight
-// function duration budget (e.g. Vercel Hobby, 60s) can dial it under the limit.
-export const LIVE_AI_TIMEOUT_MS = Number(process.env.LIVE_AI_TIMEOUT_MS ?? 90_000);
+// Total wall-clock budget for the whole audit, anchored at `createdAt`. The report page
+// waits on the spinner for this long at most. When the budget is nearly spent, the
+// pipeline stops gathering (any pillars still running degrade to `unavailable`) and
+// finalizes immediately, so a report is always produced within this window.
+export const RUN_TIMEOUT_MS = Number(process.env.RUN_TIMEOUT_MS ?? 90_000);
+
+// Live-AI is the longest pillacted step. Kept under the common serverless maxDuration (60s
+// on Vercel Hobby) so a single invocation always returns and the chain can finalize; env
+// overrides it where the plan allows a longer window.
+export const LIVE_AI_TIMEOUT_MS = Number(process.env.LIVE_AI_TIMEOUT_MS ?? 45_000);
+
+// The longest each stage is allowed to take before the budget gate refuses to start it.
+// Roughly how long a healthy stage needs to produce *something* usable; a stage that can't
+// fit in the remaining time is skipped so the report still finalizes on schedule.
+const STAGE_MIN_MS: Partial<Record<AuditStage, number>> = {
+  scrape: 20_000,
+  structural: 25_000,
+  "live-ai": 45_000,
+  "third-party": 45_000,
+  finalize: 15_000,
+};
+
+// The verdict sentence is nice-to-have, never required (it's nullable in the report). It
+// must never push the finalize step past the budget, so it gets its own short deadline.
+const VERDICT_TIMEOUT_MS = 12_000;
 
 export async function createAudit(url: string, businessName: string): Promise<Audit> {
   const audit: Audit = {
@@ -85,8 +107,20 @@ export async function runAuditStep(id: string): Promise<void> {
     const now = Date.now();
     if (audit.jobLock && now < audit.jobLock) return; // another invocation is running it
 
-    const stage: AuditStage =
+    let stage: AuditStage =
       audit.stage && audit.stage !== "done" ? audit.stage : "scrape";
+
+    // Wall-clock budget gate: if this stage needs more time than is left in the run,
+    // stop gathering and finalize now with whatever pillars are already collected.
+    // This is what guarantees the report page never sits on the spinner forever.
+    const createdAt = Date.parse(audit.createdAt ?? "") || now;
+    const elapsedMs = now - createdAt;
+    if (stage !== "finalize" && elapsedMs + (STAGE_MIN_MS[stage] ?? 0) > RUN_TIMEOUT_MS) {
+      console.warn(
+        `[pipeline/step] budget gate: ${elapsedMs}ms elapsed, skipping "${stage}" and finalizing`,
+      );
+      stage = "finalize";
+    }
 
     // Claim the step so concurrent/resuming invocations don't double-run it.
     await saveAudit({ ...audit, jobLock: now + STEP_LOCK_MS });
@@ -219,7 +253,11 @@ async function runFinalizeStep(id: string): Promise<void> {
   const score = computeScore(pillars);
   const checks = pillars.flatMap((p) => p.checks);
   const fixes = deriveFixes(checks);
-  const verdict = await generateVerdict(audit.businessName, pillars);
+  const verdict = await withDeadline(
+    generateVerdict(audit.businessName, pillars),
+    VERDICT_TIMEOUT_MS,
+    () => null,
+  );
   await saveAudit({
     ...audit,
     score,

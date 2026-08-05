@@ -141,12 +141,6 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .geo-anim {
-    animation: none !important;
-  }
-}
-
 body {
   background-color: var(--color-background);
   color: var(--color-text-primary);

@@ -212,9 +212,10 @@ All real values live in `.env.local` (gitignored). Documented with placeholders 
 | `TAVILY_API_KEY` | ❌ | Optional; enables real live search citations. Without it citation pillars may report `unavailable`. |
 | `SUPABASE_URL` | ❌ | Enables Postgres storage (used on Vercel where the FS is read-only). Leave unset for local file storage. |
 | `SUPABASE_SERVICE_ROLE_KEY` | ❌ | Service-role key for Supabase storage. |
-| `AUDIT_JOB_SECRET` | ❌ | Guard on the `/api/jobs/stages` self-trigger. |
+| `AUDIT_JOB_SECRET` | ❌ | Guard on the `/api/jobs/run` self-trigger. |
 | `APP_URL` | ❌ | Base URL used to self-trigger the next audit step off-Host (derived automatically on Vercel). |
-| `LIVE_AI_TIMEOUT_MS` | ❌ | Cap the live-AI stage (e.g. `45000` on Vercel Hobby) so it stays under the function duration limit. |
+| `LIVE_AI_TIMEOUT_MS` | ❌ | Cap the live-AI stage (default `45000`) so it stays under the function duration limit. |
+| `RUN_TIMEOUT_MS` | ❌ | Total wall-clock budget for the audit (default `90000` = 1.5 min). When nearly spent, the pipeline stops gathering (remaining pillars report `unavailable`) and finalizes immediately, so a report is always produced within this window. |
 | `STEP_LOCK_MS` | ❌ | Concurrent-step lock span (default 55s). |
 
 ---

@@ -285,7 +285,7 @@ async function descriptionAccuracyCheck(
       evidence: { type: "absence", source: "homepage", note: "The AI grading call failed." },
       severity: "warning",
       status: "unavailable",
-      unavailableReason: "The AI grading call failed.",
+      unavailableReason: "The AI grading call failed: see server logs.",
     };
   }
 

@@ -48,6 +48,14 @@ export type GroundedResult = {
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
 const MAX_RETRIES = 1;
 const RETRY_BACKOFF_MS = 1200;
+// OpenRouter free tier enforces a hard per-day request cap ("free-models-per-day"). Once
+// reached, every call 429s with a reset timestamp far in the future — retrying can never
+// succeed within this run, so we detect that specific cap and abort fast instead of stalling.
+const FREE_TIER_DAILY_CAP_MARKERS = [
+  "free-models-per-day",
+  "openrouter_free_tier_daily",
+  "rate limit reached for free tier",
+];
 // Hard timeout per request. The free route can be backed up, and without this a single
 // slow/hung call stalls the whole audit while the report page keeps polling. Timeouts and
 // network errors abort immediately (no retry); only transient HTTP statuses (429/5xx) retry.
@@ -55,6 +63,10 @@ const REQUEST_TIMEOUT_MS = 15000;
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isFreeTierDailyCap(body: string): boolean {
+  return FREE_TIER_DAILY_CAP_MARKERS.some((marker) => body.toLowerCase().includes(marker));
 }
 
 async function callWithRetry(url: string, init: RequestInit): Promise<Response> {
@@ -82,6 +94,14 @@ async function callWithRetry(url: string, init: RequestInit): Promise<Response> 
       try {
         lastBody = await response.text();
       } catch {}
+      // A hard daily-cap 429 will not clear within this run, so fail fast with a clear
+      // message rather than burning a retry (and its timeout window) on a call that cannot
+      // succeed. Only plain transient 429s still get retried.
+      if (response.status === 429 && isFreeTierDailyCap(lastBody)) {
+        throw new Error(
+          `OpenRouter free-tier daily request limit reached. Add credits or wait for the daily reset to continue. ${lastBody.slice(0, 200)}`,
+        );
+      }
       if (!RETRYABLE_STATUS.has(response.status)) {
         const detail = lastBody ? ` ${lastBody.slice(0, 300)}` : "";
         throw new Error(`OpenRouter API error: ${lastStatus}${detail}`);

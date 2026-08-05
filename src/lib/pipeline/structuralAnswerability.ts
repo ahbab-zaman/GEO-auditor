@@ -318,6 +318,8 @@ Return JSON exactly matching: { "hasDirectAnswer": boolean, "extractedSentence":
     };
   } catch (error) {
     console.error("[pipeline/direct-answer-clarity]", error);
+    const reason =
+      error instanceof Error ? error.message : "The AI grading call failed.";
     return {
       id: "direct-answer-clarity",
       label: "Direct-answer clarity",
@@ -327,7 +329,7 @@ Return JSON exactly matching: { "hasDirectAnswer": boolean, "extractedSentence":
       evidence: { type: "absence", source: "homepage", note: "The AI grading call failed." },
       severity: "warning",
       status: "unavailable",
-      unavailableReason: "The AI grading call failed.",
+      unavailableReason: reason,
     };
   }
 }
