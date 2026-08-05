@@ -44,20 +44,31 @@ Last updated: 2026-08-06
 
 ### ProgressState (running state)
 
-| Property         | Class                            |
-| ---------------- | -------------------------------- |
-| Background       | bg-surface                       |
-| Border           | border border-border             |
-| Border radius    | rounded-xl                       |
-| Icon             | lucide-react stage icon, `h-8 w-8 text-text-muted animate-breathe` |
-| Text — stage     | text-sm text-text-secondary      |
-| Spacing          | p-6, flex-col items-center, mt-4 (icon -> label) |
-| Shadow           | none                             |
-| Accent usage     | none — muted icon only           |
+File: src/components/audit/ProgressState.tsx (updated 2026-08-06)
+Last updated: 2026-08-06
 
-**Pattern notes:** No spinner ring, no percentage bar — the only animation is the `breathe` keyframe
-(slow opacity pulse 0.5 → 1 → 0.5, ~1.8s, defined in globals.css as `--animate-breathe`). Stage label is
-a full plain-language sentence.
+| Property          | Class                                             |
+| ----------------- | ------------------------------------------------ |
+| Type              | Client Component (`"use client"` + framer-motion) |
+| Card              | `bg-surface rounded-xl border border-border px-6 py-10 shadow-card` |
+| Loader circle     | `h-28 w-28` relative; dashed `border-border` reverse-spin ring; `bg-accent/10 blur-xl animate-glow-pulse` glow |
+| Radar sweep       | `conic-gradient(color-mix(accent…))` on `animate-radar-sweep` rotating overlay |
+| Center icon       | `Search h-9 w-9 text-accent animate-glow-pulse` |
+| Particles         | 3 dots `animate-particle` + staggered `animationDelay` (accent/pass/warning) |
+| Orbit dot         | `animate-orbit` + centered `span` of 2px accent |
+| Status message    | framer-motion `AnimatePresence mode="wait"` fade + 12px slide + `blur(4px)`→0, ~0.35s, every 3.2s |
+| Stage badge       | `rounded-full bg-accent-light px-2.5 py-0.5 text-xs font-medium text-accent` "Stage N of 5" |
+| Phase label       | `text-xs text-text-muted` |
+| Progress bar      | `h-1 w-full max-w-xs rounded-full bg-surface-secondary` + `w-1/2 animate-progress-slide` gradient accent fill (indeterminate — no fake %) |
+| Spacing           | mt-6 (loader->message, h-10 fixed), mt-3 (badge), mt-5 (bar) |
+
+**Pattern notes:** Continuous, AI-inspired reel — no fake percentage. `PHASE_BASE_BY_STATUS` seeds
+the reel per backend status (pending=Preparing, scraping=Website Analysis, analyzing=AI Research →
+Generating Report) and fast-forwards on stage advance. All CSS loops are tagged `geo-anim` (disabled via
+`@media (prefers-reduced-motion: reduce)`). Keyframes live in globals.css as `--animate-spin-slow`,
+`--animate-spin-reverse`, `--animate-radar-sweep`, `--animate-glow-pulse`, `--animate-orbit`,
+`--animate-particle`, `--animate-progress-slide`. This is the only continuous animation on the site and
+renders only pre-completion.
 
 ---
 
