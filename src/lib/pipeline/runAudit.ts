@@ -1,5 +1,10 @@
 import { nanoid } from "nanoid";
-import type { Audit, AuditStatus, PillarResult, ScrapedPage } from "@/types/audit";
+import type {
+  Audit,
+  AuditStage,
+  PillarResult,
+  ScrapedPage,
+} from "@/types/audit";
 import { getAudit, saveAudit } from "@/lib/storage";
 import { computeScore } from "@/lib/pipeline/score";
 import { deriveFixes } from "@/lib/pipeline/fixes";
@@ -8,6 +13,15 @@ import { runStructuralAnswerability } from "@/lib/pipeline/structuralAnswerabili
 import { runLiveAiCitation } from "@/lib/pipeline/liveAiCitation";
 import { runThirdPartyCorroboration } from "@/lib/pipeline/thirdPartyCorroboration";
 import { generateVerdict } from "@/lib/pipeline/verdict";
+
+// How long one serverless invocation may be "claimed" by a running step before another
+// invocation may retake it. Keep this under the platform maxDuration (60s on Vercel Hobby,
+// 300s on Pro) so the lock never outlives the function that holds it.
+export const STEP_LOCK_MS = Number(process.env.STEP_LOCK_MS ?? 55_000);
+
+// Live-AI is the longest pillacted step. Allow cap via env so deployments with a tight
+// function duration budget (e.g. Vercel Hobby, 60s) can dial it under the limit.
+export const LIVE_AI_TIMEOUT_MS = Number(process.env.LIVE_AI_TIMEOUT_MS ?? 90_000);
 
 export async function createAudit(url: string, businessName: string): Promise<Audit> {
   const audit: Audit = {
@@ -18,6 +32,9 @@ export async function createAudit(url: string, businessName: string): Promise<Au
     completedAt: null,
     status: "pending",
     error: null,
+    stage: "scrape",
+    updatedAt: new Date().toISOString(),
+    jobLock: null,
     verdict: null,
     scrapedPages: [],
     pillars: {
@@ -56,104 +73,165 @@ export async function createAudit(url: string, businessName: string): Promise<Au
   return audit;
 }
 
-export async function runAudit(id: string): Promise<void> {
+// Runs exactly ONE stage of the audit and persists the result. Each serverless invocation
+// calls this once; the caller triggers the next stage after we return (see /api/jobs/run).
+export async function runAuditStep(id: string): Promise<void> {
+  let audit: Audit | null = null;
   try {
-    const audit = await getAudit(id);
+    audit = await getAudit(id);
     if (!audit) return;
+    if (audit.status === "complete" || audit.status === "failed") return;
 
-    await setStatus(id, "scraping");
+    const now = Date.now();
+    if (audit.jobLock && now < audit.jobLock) return; // another invocation is running it
 
-    let scrapedPages: ScrapedPage[];
-    try {
-      scrapedPages = await scrapeSite(audit.url);
-    } catch (error) {
-      console.error("[pipeline/scrape]", error);
-      const failed = await getAudit(id);
-      if (failed) {
-        await saveAudit({
-          ...failed,
-          status: "failed",
-          error:
-            error instanceof ScrapeError
-              ? error.userMessage
-              : "Could not reach this website — check the URL and try again.",
-        });
-      }
-      return;
+    const stage: AuditStage =
+      audit.stage && audit.stage !== "done" ? audit.stage : "scrape";
+
+    // Claim the step so concurrent/resuming invocations don't double-run it.
+    await saveAudit({ ...audit, jobLock: now + STEP_LOCK_MS });
+
+    switch (stage) {
+      case "scrape":
+        await runScrapeStep(id);
+        break;
+      case "structural":
+        await runStructuralStep(id);
+        break;
+      case "live-ai":
+        await runLiveAiStep(id);
+        break;
+      case "third-party":
+        await runThirdPartyStep(id);
+        break;
+      case "finalize":
+        await runFinalizeStep(id);
+        break;
     }
-
-    const scraped = await getAudit(id);
-    if (!scraped) return;
-    await saveAudit({ ...scraped, scrapedPages });
-
-    await setStatus(id, "analyzing");
-
-    const analyzing = await getAudit(id);
-    if (!analyzing) return;
-
-    const structuralAnswerability = await runStructuralAnswerability(
-      new URL(analyzing.url).origin,
-      analyzing.scrapedPages,
-    );
-    const liveAiCitation = await withDeadline(
-      runLiveAiCitation(
-        analyzing.businessName,
-        analyzing.url,
-        analyzing.scrapedPages,
-      ),
-      LIVE_AI_TIMEOUT_MS,
-      () => timedOutPillar("liveAiCitation", "Live AI Citation Test", 45),
-    );
-    const thirdPartyCorroboration = await runThirdPartyCorroboration(
-      analyzing.businessName,
-      analyzing.url,
-    );
-
-    const pillars = [structuralAnswerability, liveAiCitation, thirdPartyCorroboration];
-
-    const completed = { ...analyzing, pillars: pillarMap(pillars) };
-
-    const score = computeScore(pillars);
-    const checks = pillars.flatMap((p) => p.checks);
-    const fixes = deriveFixes(checks);
-    const verdict = await generateVerdict(analyzing.businessName, pillars);
-
-    await saveAudit({
-      ...completed,
-      score,
-      fixes,
-      verdict,
-      status: "complete",
-      completedAt: new Date().toISOString(),
-    });
   } catch (error) {
-    console.error("[pipeline/run-audit]", error);
-    const audit = await getAudit(id);
-    if (audit) {
+    console.error("[pipeline/step]", error);
+    const current = await getAudit(id).catch(() => null);
+    if (current && current.status !== "complete" && current.status !== "failed") {
       await saveAudit({
-        ...audit,
+        ...current,
         status: "failed",
         error: "The audit could not complete. Please try again.",
-      });
+      }).catch(() => {});
     }
   }
 }
 
-function pillarMap(pillars: PillarResult[]): Audit["pillars"] {
-  return {
-    structuralAnswerability: pillars[0],
-    liveAiCitation: pillars[1],
-    thirdPartyCorroboration: pillars[2],
-  };
-}
-
-async function setStatus(id: string, status: AuditStatus): Promise<void> {
+async function runScrapeStep(id: string): Promise<void> {
   const audit = await getAudit(id);
   if (!audit) return;
-  await saveAudit({ ...audit, status });
+  await saveAudit({ ...audit, status: "scraping", updatedAt: new Date().toISOString() });
+
+  let scrapedPages: ScrapedPage[];
+  try {
+    scrapedPages = await scrapeSite(audit.url);
+  } catch (error) {
+    console.error("[pipeline/scrape]", error);
+    const failed = await getAudit(id);
+    if (failed) {
+      await saveAudit({
+        ...failed,
+        status: "failed",
+        error:
+          error instanceof ScrapeError
+            ? error.userMessage
+            : "Could not reach this website — check the URL and try again.",
+      });
+    }
+    return;
+  }
+
+  const current = await getAudit(id);
+  if (!current) return;
+  await saveAudit({
+    ...current,
+    scrapedPages,
+    status: "analyzing",
+    stage: "structural",
+    updatedAt: new Date().toISOString(),
+  });
 }
 
-const LIVE_AI_TIMEOUT_MS = 90_000;
+async function runStructuralStep(id: string): Promise<void> {
+  const audit = await getAudit(id);
+  if (!audit) return;
+  const structuralAnswerability = await runStructuralAnswerability(
+    new URL(audit.url).origin,
+    audit.scrapedPages ?? [],
+  );
+  const current = await getAudit(id);
+  if (!current) return;
+  await saveAudit({
+    ...current,
+    pillars: { ...current.pillars, structuralAnswerability },
+    stage: "live-ai",
+    updatedAt: new Date().toISOString(),
+  });
+}
+
+async function runLiveAiStep(id: string): Promise<void> {
+  const audit = await getAudit(id);
+  if (!audit) return;
+  const liveAiCitation = await withDeadline(
+    runLiveAiCitation(audit.businessName, audit.url, audit.scrapedPages ?? []),
+    LIVE_AI_TIMEOUT_MS,
+    () => timedOutPillar("liveAiCitation", "Live AI Citation Test", 45),
+  );
+  const current = await getAudit(id);
+  if (!current) return;
+  await saveAudit({
+    ...current,
+    pillars: { ...current.pillars, liveAiCitation },
+    stage: "third-party",
+    updatedAt: new Date().toISOString(),
+  });
+}
+
+async function runThirdPartyStep(id: string): Promise<void> {
+  const audit = await getAudit(id);
+  if (!audit) return;
+  const thirdPartyCorroboration = await runThirdPartyCorroboration(
+    audit.businessName,
+    audit.url,
+  );
+  const current = await getAudit(id);
+  if (!current) return;
+  await saveAudit({
+    ...current,
+    pillars: { ...current.pillars, thirdPartyCorroboration },
+    stage: "finalize",
+    updatedAt: new Date().toISOString(),
+  });
+}
+
+async function runFinalizeStep(id: string): Promise<void> {
+  const audit = await getAudit(id);
+  if (!audit) return;
+  const pillars = [
+    audit.pillars.structuralAnswerability,
+    audit.pillars.liveAiCitation,
+    audit.pillars.thirdPartyCorroboration,
+  ];
+  const score = computeScore(pillars);
+  const checks = pillars.flatMap((p) => p.checks);
+  const fixes = deriveFixes(checks);
+  const verdict = await generateVerdict(audit.businessName, pillars);
+  await saveAudit({
+    ...audit,
+    score,
+    fixes,
+    verdict,
+    status: "complete",
+    stage: "done",
+    jobLock: null,
+    updatedAt: new Date().toISOString(),
+    completedAt: new Date().toISOString(),
+  });
+}
 
 function withDeadline<T>(
   promise: Promise<T>,
@@ -176,7 +254,7 @@ function withDeadline<T>(
 }
 
 function timedOutPillar(
-  key: "liveAiCitation",
+  key: PillarResult["key"],
   label: string,
   pointsPossible: number,
 ): PillarResult {

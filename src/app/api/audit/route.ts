@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { after } from "next/server";
 import { AuditRequestSchema } from "@/schemas/audit";
-import { createAudit, runAudit } from "@/lib/pipeline/runAudit";
+import { createAudit } from "@/lib/pipeline/runAudit";
+import { triggerAuditStep } from "@/lib/jobs";
 
 export async function POST(req: NextRequest) {
   try {
@@ -14,7 +16,12 @@ export async function POST(req: NextRequest) {
     }
     const { url, businessName } = parsed.data;
     const audit = await createAudit(url, businessName);
-    void runAudit(audit.id);
+    // Start the first stage in a fresh serverless invocation so this request returns fast.
+    after(() => {
+      triggerAuditStep(audit.id).catch((error) =>
+        console.error("[api/audit] trigger failed", error),
+      );
+    });
     return NextResponse.json({ success: true, data: { id: audit.id } });
   } catch (error) {
     console.error("[api/audit]", error);

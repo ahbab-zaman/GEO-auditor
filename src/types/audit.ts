@@ -1,5 +1,22 @@
 export type AuditStatus = "pending" | "scraping" | "analyzing" | "complete" | "failed";
 
+// The audit runs as a sequence of serverless-safe steps. `stage` says which step to run next.
+export type AuditStage =
+  | "scrape"
+  | "structural"
+  | "live-ai"
+  | "third-party"
+  | "finalize"
+  | "done";
+
+export const AUDIT_STAGES: Exclude<AuditStage, "done">[] = [
+  "scrape",
+  "structural",
+  "live-ai",
+  "third-party",
+  "finalize",
+];
+
 export type Audit = {
   id: string;
   url: string;
@@ -8,6 +25,11 @@ export type Audit = {
   completedAt: string | null;
   status: AuditStatus;
   error: string | null;
+
+  // Step-runner bookkeeping (introduced for serverless deployments).
+  stage?: AuditStage;
+  updatedAt?: string;
+  jobLock?: number | null;
 
   verdict: string | null;
 
