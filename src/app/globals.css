@@ -1,0 +1,58 @@
+@import "tailwindcss";
+
+@theme {
+  /* Font */
+  --font-sans: "Inter", sans-serif;
+
+  /* Page and surface backgrounds */
+  --color-background: #f7f8fb;
+  --color-surface: #ffffff;
+  --color-surface-secondary: #f4f5f9;
+
+  /* Borders */
+  --color-border: #e5e7f0;
+  --color-border-light: #eef0f6;
+
+  /* Text */
+  --color-text-primary: #12141c;
+  --color-text-secondary: #565b6e;
+  --color-text-muted: #9498a8;
+
+  /* Primary accent — deep indigo */
+  --color-accent: #3730e0;
+  --color-accent-dark: #2a24ab;
+  --color-accent-light: #eceafe;
+  --color-accent-foreground: #ffffff;
+
+  /* Pass / high score — green */
+  --color-pass: #0e9f6e;
+  --color-pass-light: #e5f9f1;
+  --color-pass-foreground: #05704c;
+
+  /* Warning / mid score — amber */
+  --color-warning: #d97706;
+  --color-warning-light: #fef3e2;
+  --color-warning-foreground: #92400e;
+
+  /* Critical / low score — red */
+  --color-critical: #dc2626;
+  --color-critical-light: #fdecec;
+  --color-critical-foreground: #991b1b;
+
+  /* Evidence block backgrounds */
+  --color-quote-bg: #f4f5f9;
+  --color-code-bg: #12141c;
+  --color-code-text: #e5e7f0;
+
+  /* Border radius */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-full: 9999px;
+}
+
+body {
+  background-color: var(--color-background);
+  color: var(--color-text-primary);
+}
