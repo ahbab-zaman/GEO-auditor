@@ -209,44 +209,33 @@ export type GroundedResult = {
 };
 
 export async function geminiGroundedQuery(prompt: string): Promise<GroundedResult> {
-  const response = await fetch(OPENROUTER_CHAT_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      messages: [{ role: "user", content: prompt }],
-      plugins: [{ id: "web", max_results: 5 }],
-    }),
-  });
-  if (!response.ok) {
-    throw new Error(`OpenRouter API error: ${response.status}`);
+  // Primary: real citations via Tavily search + the (free) OpenRouter model synthesizes.
+  if (process.env.TAVILY_API_KEY) {
+    const results = await searchTavily(prompt); // POST api.tavily.com/search, bearer TAVILY_API_KEY
+    const { content } = await chatCompletion(groundedPrompt(prompt, results), { temperature: 0.5 });
+    return { answerText: content, citedUrls: results.map((r) => r.url) };
   }
-  const data = await response.json();
-  const content: string = data.choices?.[0]?.message?.content ?? "";
-  const citations: string[] =
-    (data.choices?.[0]?.message?.citations ?? [])
-      .map((c: { url?: string }) => c.url)
-      .filter((u: string | undefined): u is string => Boolean(u));
+  // Fallback: OpenRouter's own "web" plugin — paid online-capable models only
+  // (e.g. OPENROUTER_MODEL=openrouter/auto). Errors -> pillar "unavailable", never fabricated.
+  const { content, citations } = await chatCompletion(prompt, { webSearch: true });
   return { answerText: content, citedUrls: citations };
 }
 ```
 
 **Rules:**
-- Grounded `web` plugins are used **only** for Pillar B (live citation test) and Pillar C (third-party
-  corroboration). Plain `geminiJson` is used everywhere else — web search adds latency and the free
-  route can't do it anyway
-- On the free route an unsupported-web model throws → those two pillars report `unavailable` with a
-  clear reason, never fabricate citations (this is intentional, see option-1 decision)
+- The citation pillars get REAL citations from **Tavily's free tier** (`TAVILY_API_KEY`, ~1,000
+  req/mo) — the free OpenRouter models can't do web search themselves, so we search separately and
+  hand the model the results + URLs to answer-and-cite. If no `TAVILY_API_KEY`, it falls back to
+  OpenRouter's paid web plugin (only works on online-capable models like `openrouter/auto`).
+- **No web search for the non-grounded calls** — plain `geminiJson` is used everywhere else; search
+  adds latency and burns the free Tavily quota on tasks that don't need it
 - `answerText` is not a nice-to-have — it is stored as-is on the `Evidence` object and rendered
   verbatim in the report. It is the single most persuasive artifact the tool produces — never discard
   it in favor of just the citation list
 - **Sequence Stage 3 and Stage 4 calls with a plain `for` loop and `await`, never `Promise.all`** — a
   slow/backed-up free route is the single most likely way to fail mid-audit; sequential keeps it stable
-- Wrap every call in try/catch — a failure marks that pillar `unavailable` with a human-readable
-  reason, never crashes the audit
+- Wrap every call in try/catch — a failure (missing key, quota, timeout) marks that pillar `unavailable`
+  with a human-readable reason, never crashes the audit
 
 ### Resolving grounding redirect URLs to real domains
 

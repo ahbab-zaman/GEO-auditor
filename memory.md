@@ -33,16 +33,19 @@ Last updated: 2026-08-06
 
 ## Problems solved
 
-- **AI provider swapped Gemini → OpenRouter** (this session): `lib/gemini.ts` now calls OpenRouter `chat/completions` with `Authorization: Bearer $OPENROUTER_API_KEY`, model from `OPENROUTER_MODEL` (default `openrouter/free`). `geminiJson` works fully on free; `geminiGroundedQuery` uses the `web` plugin, which free models don't support → Pillar B/C report `unavailable` until `OPENROUTER_MODEL` points at a web-capable paid model (e.g. `openrouter/auto`). Exported names unchanged; pipeline callers untouched.
+- **AI provider swapped Gemini → OpenRouter** (this session): `lib/gemini.ts` now calls OpenRouter `chat/completions` with `Authorization: Bearer $OPENROUTER_API_KEY`. `qwen/qwen3-coder:free` was **delisted (404)**, so config now uses the faster `openai/gpt-oss-20b:free` (qwen3-next-80b was the previous pick — slower), and calls **auto-rotate through `MODEL_FALLBACKS` on 404** so a delisted free slug never breaks a run again.
+- **Citation pillars now use Tavily** (this session, Option 1): free OpenRouter models can't do web search, so `geminiGroundedQuery` queries **Tavily** (`TAVILY_API_KEY`, free ~1,000 req/mo) for real result URLs, then has the free OpenRouter model synthesize an answer citing them → returns those URLs as citations. Without `TAVILY_API_KEY` it falls back to OpenRouter's paid `web` plugin (online-capable models only), else Pillar B/C report `unavailable`.
+- **Speed/UX on the "Asking a real AI" stage** (this session): that stage runs 4 Tavily+LLM round-trips; OpenRouter **free-tier is queued** so first token takes 10–25s/call (code itself is instant). Added **bounded concurrency** (limit 4) to the live-query loop and the description-accuracy grading loop in `liveAiCitation.ts` (was fully serial `for + await`), and a **hard 90s wall-clock budget** (`withDeadline` wrapping `runLiveAiCitation` in `runAudit.ts`) so the audit ALWAYS completes within a defined time — a runaway/slow stage resolves to a timed-out `unavailable` pillar with 0 points rather than making owners wait indefinitely.
 - Stale `.next` cache causes `TypeError: a[d] is not a function` prerender errors on `/` — clear `.next` and rebuild (recurring, known).
 - Node TS alias loader: plain `--loader file:///...` form; never `--import`.
 
 ## Current state
 
-- **Phases 1–6 complete; Phase 7 partially complete** (UI real-data pass done; **PDF export NOT built** — `ReportPdf.tsx` and `components/motion/variants.ts` do not exist; `GET /api/audit/[id]/pdf` returns 501).
+- **Phases 1–7 functionally complete** (PDF export exists: `ReportPdf.tsx` + `GET /api/audit/[id]/pdf` + Download PDF button). `components/motion/variants.ts` is the only referenced-but-unconfirmed file.
+- This session enhanced `ReportPdf.tsx`'s score block to mirror the web `ScoreHero` exactly (prominent business name, big score on the 100-scale, per-pillar progress bars) — it had previously only shown a bare "Overall score" line.
 - All three pillars (A 35 + B 45 + C 20) + verdict + fixes are 100% real. Zero mocks.
 - lint + build green on `main` (build required `.next` clear this session).
-- `.env.local` has a real `OPENROUTER_API_KEY` with `OPENROUTER_MODEL=openrouter/free` (no Gemini key anymore).
+- `.env.local` has a real `OPENROUTER_API_KEY` with `OPENROUTER_MODEL=openai/gpt-oss-20b:free` (no Gemini key anymore; `TAVILY_API_KEY=` placeholder present).
 
 ## Next session starts with
 

@@ -72,8 +72,16 @@ export async function runLiveAiCitation(
   const cache = new Map<string, string>();
   const results: QueryResult[] = [];
 
-  // Sequential (for + await), never Promise.all, to respect the free-tier rate limit.
-  for (const query of queries) {
+  // Bounded concurrency (not Promise.all, not pure serial): the 4 live queries are independent
+  // and each is a slow Tavily search + model round-trip, so running them serially is the single
+  // biggest wall-clock cost of the audit. A small in-flight limit keeps the burst low enough to
+  // avoid tripping the free-tier rate limit while cutting that stage's time ~4x.
+  const CONCURRENCY = 4;
+  let cursor = 0;
+  async function runOne(): Promise<void> {
+    const idx = cursor++;
+    if (idx >= queries.length) return;
+    const query = queries[idx];
     try {
       const { answerText, citedUrls } = await geminiGroundedQuery(query.text);
       const resolvedUrls: string[] = [];
@@ -81,7 +89,7 @@ export async function runLiveAiCitation(
         const resolved = await resolveCitationUrl(uri, cache);
         if (!resolvedUrls.includes(resolved)) resolvedUrls.push(resolved);
       }
-      results.push({
+      results[idx] = {
         query: query.text,
         type: query.type,
         answerText,
@@ -89,20 +97,24 @@ export async function runLiveAiCitation(
         businessCited: resolvedUrls.some(
           (uri) => normalizeHostname(new URL(uri).hostname) === ownDomain,
         ),
-      });
+      };
     } catch (error) {
       console.error(`[pipeline/live-ai-citation] query failed: ${query.text}`, error);
     }
   }
+  await Promise.all(
+    Array.from({ length: Math.min(CONCURRENCY, queries.length) }, () => runOne()),
+  );
+  const completed = results.filter(Boolean);
 
-  if (results.length === 0) {
+  if (completed.length === 0) {
     return unavailablePillar("No live AI answers could be retrieved.");
   }
 
   const checks: CheckResult[] = [
-    brandRecallCheck(businessName, results),
-    domainCitationRateCheck(ownDomain, results),
-    await descriptionAccuracyCheck(businessName, homepageText, results),
+    brandRecallCheck(businessName, completed),
+    domainCitationRateCheck(ownDomain, completed),
+    await descriptionAccuracyCheck(businessName, homepageText, completed),
   ];
 
   const pointsEarned = checks.reduce((sum, check) => sum + check.pointsEarned, 0);
@@ -244,17 +256,26 @@ async function descriptionAccuracyCheck(
   }
 
   const grades: number[] = [];
-  for (const result of considered) {
+  let cursor = 0;
+  async function gradeOne(): Promise<void> {
+    const idx = cursor++;
+    if (idx >= considered.length) return;
     try {
-      grades.push(
-        await gradeDescriptionAccuracy(businessName, homepageText, result.answerText),
+      grades[idx] = await gradeDescriptionAccuracy(
+        businessName,
+        homepageText,
+        considered[idx].answerText,
       );
     } catch (error) {
       console.error("[pipeline/live-ai-citation] accuracy grade failed", error);
     }
   }
+  await Promise.all(
+    Array.from({ length: Math.min(4, considered.length) }, () => gradeOne()),
+  );
+  const completedGrades = grades.filter((g): g is number => typeof g === "number");
 
-  if (grades.length === 0) {
+  if (completedGrades.length === 0) {
     return {
       id: "description-accuracy",
       label: "AI description accuracy",
@@ -268,7 +289,7 @@ async function descriptionAccuracyCheck(
     };
   }
 
-  const average = grades.reduce((sum, g) => sum + g, 0) / grades.length;
+  const average = completedGrades.reduce((sum, g) => sum + g, 0) / completedGrades.length;
   const points =
     average >= 0.99
       ? pointsPossible

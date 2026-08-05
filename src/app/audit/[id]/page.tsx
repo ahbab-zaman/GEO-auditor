@@ -24,6 +24,9 @@ export default function AuditReportPage() {
 
   useEffect(() => {
     let cancelled = false;
+    // Poll fast at first (scrape -> analyzing flips quickly), then back off toward 6s during
+    // the long analyzing stage (many sequential AI calls) so we don't hammer the server/browser.
+    let delayMs = 1500;
     async function poll() {
       try {
         const response = await fetch(`/api/audit/${id}`);
@@ -46,7 +49,8 @@ export default function AuditReportPage() {
         if (!cancelled) setError("Could not reach the server.");
         return;
       }
-      setTimeout(poll, 1500);
+      setTimeout(poll, delayMs);
+      delayMs = Math.min(Math.round(delayMs * 1.8), 6000);
     }
     poll();
     return () => {

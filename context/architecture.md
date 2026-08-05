@@ -190,13 +190,13 @@ could not be completed and why — never silently dropped from the denominator.
 |---|---|---|
 | Target website (fetch + cheerio) | Stage 1 scrape | If homepage fetch fails, audit fails entirely — nothing to score |
 | `{url}/robots.txt` | AI crawler access check | Missing robots.txt = treated as "all crawlers allowed" (correct default), not an error |
-| OpenRouter (`openrouter/free`, `web` plugin) | Live AI citation test + third-party corroboration | Pillar marked unavailable, rest of audit still completes |
-| OpenRouter (`openrouter/free`, no web plugin) | Direct-answer clarity grading, query generation, verdict generation | Check/stage marked unavailable, rest of pipeline still completes |
+| OpenRouter (`openrouter/free` default, no web plugin) | Direct-answer clarity grading, query generation, verdict generation | Check/stage marked unavailable, rest of pipeline still completes |
+| Tavily search (free tier) + OpenRouter model synthesizes | Live AI citation test + third-party corroboration | Pillar marked unavailable, rest of audit still completes |
 
-Single provider by design — one `OPENROUTER_API_KEY` covers every AI call; the `web` plugin is toggled
-per-call via `plugins`, not via a separate provider. Note: the free route typically does NOT support
-the `web` plugin, so the two citation pillars may report `unavailable` until `OPENROUTER_MODEL` points
-at a web-search-capable paid model.
+Single provider by design for reasoning (one `OPENROUTER_API_KEY`); real search citations come from
+Tavily (`TAVILY_API_KEY`, free tier) because free OpenRouter models cannot do web search. Without a
+`TAVILY_API_KEY`, the citation pillars fall back to OpenRouter's paid `web` plugin (online-capable
+models only) or report `unavailable`.
 
 **Rate limiting / latency:** OpenRouter free routes can be slow and occasionally rate-limit. Stage 3 and
 Stage 4 calls are executed **sequentially, not in parallel** (`for` loop with `await`, not `Promise.all`)
@@ -213,7 +213,7 @@ it needs from this alone — every path below either already exists at the end o
 
 ```
 geo-auditor/
-├── .env.local                        → OPENROUTER_API_KEY, OPENROUTER_MODEL (gitignored)
+├── .env.local                        → OPENROUTER_API_KEY, OPENROUTER_MODEL, TAVILY_API_KEY (gitignored)
 ├── .env.example                      → checked in, documents required vars with no real values
 ├── .gitignore                        → node_modules, .next, .env.local, /data/audits/*.json
 ├── next.config.ts

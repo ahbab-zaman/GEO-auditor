@@ -95,10 +95,14 @@ export async function runAudit(id: string): Promise<void> {
       new URL(analyzing.url).origin,
       analyzing.scrapedPages,
     );
-    const liveAiCitation = await runLiveAiCitation(
-      analyzing.businessName,
-      analyzing.url,
-      analyzing.scrapedPages,
+    const liveAiCitation = await withDeadline(
+      runLiveAiCitation(
+        analyzing.businessName,
+        analyzing.url,
+        analyzing.scrapedPages,
+      ),
+      LIVE_AI_TIMEOUT_MS,
+      () => timedOutPillar("liveAiCitation", "Live AI Citation Test", 45),
     );
     const thirdPartyCorroboration = await runThirdPartyCorroboration(
       analyzing.businessName,
@@ -147,4 +151,42 @@ async function setStatus(id: string, status: AuditStatus): Promise<void> {
   const audit = await getAudit(id);
   if (!audit) return;
   await saveAudit({ ...audit, status });
+}
+
+const LIVE_AI_TIMEOUT_MS = 90_000;
+
+function withDeadline<T>(
+  promise: Promise<T>,
+  ms: number,
+  timeoutValue: () => T,
+): Promise<T> {
+  return new Promise<T>((resolve) => {
+    const timer = setTimeout(() => resolve(timeoutValue()), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      () => {
+        clearTimeout(timer);
+        resolve(timeoutValue());
+      },
+    );
+  });
+}
+
+function timedOutPillar(
+  key: "liveAiCitation",
+  label: string,
+  pointsPossible: number,
+): PillarResult {
+  return {
+    key,
+    label,
+    status: "unavailable",
+    unavailableReason: `Timed out after ${LIVE_AI_TIMEOUT_MS / 1000}s while querying live AI. Report finalized with the completed pillars.`,
+    pointsEarned: 0,
+    pointsPossible,
+    checks: [],
+  };
 }

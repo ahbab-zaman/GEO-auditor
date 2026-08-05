@@ -1,6 +1,21 @@
 const OPENROUTER_BASE = "https://openrouter.ai/api/v1";
 const OPENROUTER_CHAT_URL = `${OPENROUTER_BASE}/chat/completions`;
-const MODEL = process.env.OPENROUTER_MODEL ?? "openrouter/free";
+const MODEL = process.env.OPENROUTER_MODEL?.trim() || "openrouter/free";
+
+// Free-tier model IDs get delisted without notice (that's exactly what happened to
+// qwen/qwen3-coder:free). Never hard-code a mission to one :free slug — if the configured
+// model 404s, rotate down this list so a single delisted model never breaks the audit.
+const MODEL_FALLBACKS = [
+  "qwen/qwen3-next-80b-a3b-instruct:free",
+  "meta-llama/llama-3.3-70b-instruct:free",
+  "openai/gpt-oss-20b:free",
+  "openrouter/free",
+];
+let activeModel = MODEL;
+
+const TAVILY_SEARCH_URL = "https://api.tavily.com/search";
+const SEARCH_MAX_RESULTS = 5;
+const SEARCH_TIMEOUT_MS = 12000;
 
 export function normalizeHostname(hostname: string): string {
   return hostname.replace(/^www\./, "").toLowerCase();
@@ -33,6 +48,10 @@ export type GroundedResult = {
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
 const MAX_RETRIES = 1;
 const RETRY_BACKOFF_MS = 1200;
+// Hard timeout per request. The free route can be backed up, and without this a single
+// slow/hung call stalls the whole audit while the report page keeps polling. Timeouts and
+// network errors abort immediately (no retry); only transient HTTP statuses (429/5xx) retry.
+const REQUEST_TIMEOUT_MS = 15000;
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -43,7 +62,19 @@ async function callWithRetry(url: string, init: RequestInit): Promise<Response> 
   let lastBody = "";
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     if (attempt > 0) await delay(RETRY_BACKOFF_MS * attempt);
-    const response = await fetch(url, init);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    let response: Response;
+    try {
+      response = await fetch(url, { ...init, signal: controller.signal });
+    } catch (error) {
+      clearTimeout(timeout);
+      if (error instanceof Error && error.name === "AbortError") {
+        throw new Error(`OpenRouter request timed out after ${REQUEST_TIMEOUT_MS}ms`);
+      }
+      throw error;
+    }
+    clearTimeout(timeout);
     if (!response.ok) {
       lastStatus = response.status;
       // Capture the provider's error body — it names the real cause (auth, quota,
@@ -51,7 +82,10 @@ async function callWithRetry(url: string, init: RequestInit): Promise<Response> 
       try {
         lastBody = await response.text();
       } catch {}
-      if (!RETRYABLE_STATUS.has(response.status)) break;
+      if (!RETRYABLE_STATUS.has(response.status)) {
+        const detail = lastBody ? ` ${lastBody.slice(0, 300)}` : "";
+        throw new Error(`OpenRouter API error: ${lastStatus}${detail}`);
+      }
       continue;
     }
     return response;
@@ -64,33 +98,63 @@ async function chatCompletion(
   prompt: string,
   options: { temperature?: number; webSearch?: boolean },
 ): Promise<{ content: string; citations: string[] }> {
-  const body: Record<string, unknown> = {
-    model: MODEL,
-    messages: [{ role: "user", content: prompt }],
-  };
-  if (options.temperature !== undefined) body.temperature = options.temperature;
-  if (options.webSearch) body.plugins = [{ id: "web", max_results: 5 }];
+  const candidates = [activeModel, ...MODEL_FALLBACKS].filter(
+    (m, i, all) => all.indexOf(m) === i,
+  );
 
-  const response = await callWithRetry(OPENROUTER_CHAT_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-    },
-    body: JSON.stringify(body),
-  });
+  let lastError: unknown;
+  for (const model of candidates) {
+    const body: Record<string, unknown> = {
+      model,
+      messages: [{ role: "user", content: prompt }],
+    };
+    if (options.temperature !== undefined) body.temperature = options.temperature;
+    if (options.webSearch) body.plugins = [{ id: "web", max_results: 5 }];
 
-  const data = await response.json();
-  const content: string | undefined = data.choices?.[0]?.message?.content;
-  if (typeof content !== "string" || content.trim() === "") {
-    throw new Error("OpenRouter returned no content");
+    let response: Response;
+    try {
+      response = await callWithRetry(OPENROUTER_CHAT_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        },
+        body: JSON.stringify(body),
+      });
+    } catch (error) {
+      lastError = error;
+      const message = error instanceof Error ? error.message : String(error);
+      // A delisted/unavailable free model 404s — rotate to the next candidate instead of
+      // failing the whole pillar. Any other error (auth, quota, timeout) propagates.
+      if (message.includes("404")) {
+        console.error(`[gemini] model ${model} unavailable, trying next candidate`);
+        continue;
+      }
+      throw error;
+    }
+
+    const data = await response.json();
+    const content: string | undefined = data.choices?.[0]?.message?.content;
+    if (typeof content !== "string" || content.trim() === "") {
+      throw new Error("OpenRouter returned no content");
+    }
+    // Web-plugin citations can arrive in two shapes: `message.citations[].url` (newer) or
+    // `message.annotations[].url_citation.url` (original web-plugin shape). Read both so a
+    // paid web-capable model produces real citations.
+    const message = data.choices?.[0]?.message;
+    const direct: { url?: string }[] = message?.citations ?? [];
+    const annotated: { url_citation?: { url?: string } }[] = message?.annotations ?? [];
+    const citations: string[] = [
+      ...direct.map((c) => c.url),
+      ...annotated.map((a) => a.url_citation?.url),
+    ].filter((u: string | undefined): u is string => Boolean(u));
+
+    // Remember the working model so subsequent calls skip the dead slug.
+    activeModel = model;
+    return { content, citations };
   }
-  const citations: string[] =
-    (data.choices?.[0]?.message?.citations as { url?: string }[] | undefined ?? [])
-      .map((c) => c.url)
-      .filter((u: string | undefined): u is string => Boolean(u));
 
-  return { content, citations };
+  throw lastError;
 }
 
 export async function geminiJson<T>(
@@ -105,11 +169,81 @@ export async function geminiJson<T>(
   return JSON.parse(cleaned) as T;
 }
 
+type TavilyResult = { title?: string; url?: string; content?: string };
+
+// Real web search via Tavily's free tier — returns actual source URLs. This is the search
+// half of the "grounded query"; the model half is a plain OpenRouter call (free models can't
+// do OpenRouter's paid web plugin, so we search ourselves and hand the model the results).
+async function searchTavily(query: string): Promise<TavilyResult[]> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), SEARCH_TIMEOUT_MS);
+  let response: Response;
+  try {
+    response = await fetch(TAVILY_SEARCH_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.TAVILY_API_KEY}`,
+      },
+      body: JSON.stringify({
+        query,
+        max_results: SEARCH_MAX_RESULTS,
+        search_depth: "basic",
+        include_answer: false,
+        include_images: false,
+      }),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    clearTimeout(timeout);
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(`Web search timed out after ${SEARCH_TIMEOUT_MS}ms`);
+    }
+    throw error;
+  }
+  clearTimeout(timeout);
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(`Web search API error: ${response.status} ${body.slice(0, 300)}`);
+  }
+  const data = await response.json();
+  const results: TavilyResult[] = data.results ?? [];
+  return results.filter((r) => Boolean(r.url));
+}
+
+function groundedPrompt(query: string, results: TavilyResult[]): string {
+  const sources = results
+    .map(
+      (r, i) =>
+        `${i + 1}. ${r.title ?? "Untitled"} — ${r.url}\n   ${(r.content ?? "").slice(0, 800)}`,
+    )
+    .join("\n\n");
+  return `You are given live web search results for the query: "${query}".
+
+The following sources were returned (each with its URL):
+
+${sources}
+
+Answer the original question thoroughly, writing naturally as a helpful assistant. Base your answer
+only on these sources. When you mention a point, cite the source URL inline as a plain parenthetical,
+e.g. (https://example.com/page). Your answer will be shown to a business owner, so be clear and
+concrete, but do not invent facts that are not in the sources.`;
+}
+
 export async function geminiGroundedQuery(prompt: string): Promise<GroundedResult> {
-  // OpenRouter's "web" plugin supplies real live-search citations. Not every model
-  // (especially free/:free routes) supports it — an unsupported model returns an
-  // error here, which the pipeline treats as the pillar being "unavailable" rather
-  // than fabricating citations.
+  // Primary path: real citations via Tavily search + the (free) OpenRouter model synthesizes.
+  if (process.env.TAVILY_API_KEY) {
+    const results = await searchTavily(prompt);
+    if (results.length === 0) {
+      throw new Error("Web search returned no results");
+    }
+    const { content } = await chatCompletion(groundedPrompt(prompt, results), { temperature: 0.5 });
+    return { answerText: content, citedUrls: results.map((r) => r.url as string) };
+  }
+
+  // Fallback path: OpenRouter's own "web" plugin — only works on paid online-capable models
+  // (e.g. OPENROUTER_MODEL=openrouter/auto). An unsupported model errors here, which the
+  // pipeline treats as the pillar being "unavailable" rather than fabricating citations.
   const { content, citations } = await chatCompletion(prompt, { webSearch: true });
   return { answerText: content, citedUrls: citations };
 }

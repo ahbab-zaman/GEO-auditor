@@ -17,7 +17,7 @@ GEO Auditor tells a business owner whether they actually exist inside AI-generat
 - **Styling**: Tailwind CSS v4 + shadcn/ui, tokens via `@theme` in `globals.css`
 - **Validation**: zod — all untrusted external data (API bodies, Gemini responses, JSON-LD)
 - **Scraping**: cheerio (static fetch only — no Playwright/Puppeteer)
-- **AI Provider**: OpenRouter (`openrouter/free` default via `OPENROUTER_MODEL`), raw `fetch`, no SDK — single provider by design
+- **AI Provider**: OpenRouter (free via `OPENROUTER_MODEL`, e.g. `openai/gpt-oss-20b:free`), raw `fetch`, no SDK — single provider by design. Free slugs get delisted; `lib/gemini.ts` auto-rotates through `MODEL_FALLBACKS` on 404. Real search citations via Tavily (`TAVILY_API_KEY`, free tier)
 - **PDF**: `@react-pdf/renderer`
 - **Animation**: framer-motion
 - **Icons**: lucide-react
@@ -49,7 +49,7 @@ This project uses a **`/src` layout**. All application code lives under `src/`; 
 ├── next.config.ts
 ├── tsconfig.json                  → strict: true, "@/*" → "./src/*"
 ├── package.json
-├── .env.local                     → OPENROUTER_API_KEY, OPENROUTER_MODEL (gitignored)
+├── .env.local                     → OPENROUTER_API_KEY, OPENROUTER_MODEL, TAVILY_API_KEY (gitignored)
 ├── .env.example
 └── src/
     ├── app/
@@ -182,7 +182,7 @@ All in `skills/`. Use them — don't skip them because a task feels small.
 - `npm run build` — production build
 - `npm run lint` — lint
 
-Requires only `OPENROUTER_API_KEY` in `.env.local` — no other services to run, under 5 minutes to get going per the project's own scoping decision.
+Requires only `OPENROUTER_API_KEY` (+ `TAVILY_API_KEY` for the citation pillars) in `.env.local` — no other services to run, under 5 minutes to get going per the project's own scoping decision.
 
 ---
 

@@ -190,7 +190,7 @@ exactly what to provide — this is what makes the "under 5 minutes to run" requ
 
 | Variable | Used In |
 |---|---|
-| `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` | `lib/gemini.ts` — the single AI provider, OpenRouter (default route `openrouter/free`) |
+| `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, `TAVILY_API_KEY` | `lib/gemini.ts` — AI reasoning via OpenRouter (default `openai/gpt-oss-20b:free`, auto-rotates on 404); real search citations via Tavily free tier |
 
 Only one AI provider key exists in this project by design. Do not add `GEMINI_API_KEY`, `OPENAI_API_KEY`,
 `PERPLEXITY_API_KEY`, or any other AI provider key without first updating library-docs.md and
