@@ -17,7 +17,7 @@ GEO Auditor tells a business owner whether they actually exist inside AI-generat
 - **Styling**: Tailwind CSS v4 + shadcn/ui, tokens via `@theme` in `globals.css`
 - **Validation**: zod — all untrusted external data (API bodies, Gemini responses, JSON-LD)
 - **Scraping**: cheerio (static fetch only — no Playwright/Puppeteer)
-- **AI Provider**: OpenRouter (free via `OPENROUTER_MODEL`, e.g. `openai/gpt-oss-20b:free`), raw `fetch`, no SDK — single provider by design. Free slugs get delisted; `lib/gemini.ts` auto-rotates through `MODEL_FALLBACKS` on 404. Real search citations via Tavily (`TAVILY_API_KEY`, free tier)
+- **AI Provider**: Groq Compound (`groq/compound`) via `GROQ_API_KEY` as the primary model, OpenRouter free (`openrouter/free`) via `OPENROUTER_API_KEY` as the fallback, all via raw `fetch` with no SDK. Groq handles built-in web search; Tavily (`TAVILY_API_KEY`, free tier) remains a fallback search path when Groq is unavailable.
 - **PDF**: `@react-pdf/renderer`
 - **Animation**: framer-motion
 - **Icons**: lucide-react
@@ -49,7 +49,7 @@ This project uses a **`/src` layout**. All application code lives under `src/`; 
 ├── next.config.ts
 ├── tsconfig.json                  → strict: true, "@/*" → "./src/*"
 ├── package.json
-├── .env.local                     → OPENROUTER_API_KEY, OPENROUTER_MODEL, TAVILY_API_KEY (gitignored)
+├── .env.local                     → GROQ_API_KEY, OPENROUTER_API_KEY, TAVILY_API_KEY (gitignored)
 ├── .env.example
 └── src/
     ├── app/
@@ -182,17 +182,18 @@ All in `skills/`. Use them — don't skip them because a task feels small.
 - `npm run build` — production build
 - `npm run lint` — lint
 
-Requires only `OPENROUTER_API_KEY` (+ `TAVILY_API_KEY` for the citation pillars) in `.env.local` — no other services to run, under 5 minutes to get going per the project's own scoping decision.
+Requires `GROQ_API_KEY` and `OPENROUTER_API_KEY` (+ optional `TAVILY_API_KEY` for fallback citations) in `.env.local` — no other services to run, under 5 minutes to get going per the project's own scoping decision.
 
 ---
 
 ## 11. Environment Variables
 
 ```
-GEMINI_API_KEY=...
+GROQ_API_KEY=...
+OPENROUTER_API_KEY=...
 ```
 
-Only one AI provider key exists in this project by design. Never add `OPENAI_API_KEY`, `PERPLEXITY_API_KEY`, or any other provider key without first updating `context/library-docs.md` and `context/architecture.md`'s integrations table.
+Two provider keys exist in this project by design: Groq primary, OpenRouter fallback. Never add `OPENAI_API_KEY`, `PERPLEXITY_API_KEY`, or any other provider key without first updating `context/library-docs.md` and `context/architecture.md`'s integrations table.
 
 ---
 
@@ -210,6 +211,6 @@ Only one AI provider key exists in this project by design. Never add `OPENAI_API
 ## 13. Security
 
 - No auth, no accounts, no sessions — nothing to secure on that front.
-- `OPENROUTER_API_KEY` never hardcoded, never logged, never sent to the client — only read inside `src/lib/gemini.ts`.
+- `GROQ_API_KEY` and `OPENROUTER_API_KEY` are never hardcoded, never logged, never sent to the client — only read inside `src/lib/gemini.ts`.
 - All scraped HTML, JSON-LD, and AI model responses are untrusted input — validate with zod before treating as typed data, never `JSON.parse()` directly into a trusted type.
 - Never log a raw API key or `.env` value to the console or to `memory.md`.

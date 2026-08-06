@@ -18,11 +18,12 @@ const PILLAR_ORDER = [
 
 export default function AuditReportPage() {
   const params = useParams<{ id: string }>();
-  const id = params.id;
+  const id = params?.id;
   const [audit, setAudit] = useState<Audit | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!id) return;
     let cancelled = false;
     // Poll fast at first (scrape -> analyzing flips quickly), then back off toward 6s during
     // the long analyzing stage (many sequential AI calls) so we don't hammer the server/browser.
@@ -89,6 +90,7 @@ export default function AuditReportPage() {
   }
 
   const pillars = PILLAR_ORDER.map((key) => audit.pillars[key]);
+  const checksById = new Map(pillars.flatMap((pillar) => pillar.checks).map((check) => [check.id, check]));
 
   const ownDomain = (() => {
     try {
@@ -125,11 +127,15 @@ export default function AuditReportPage() {
         {audit.fixes.length > 0 && (
           <section className="space-y-4">
             <h3 className="text-base font-semibold leading-6 text-text-primary">
-              Prioritized fixes
+              Requirements not yet met
             </h3>
             <div className="space-y-4">
               {audit.fixes.map((fix) => (
-                <FixCard key={fix.id} fix={fix} />
+                <FixCard
+                  key={fix.id}
+                  fix={fix}
+                  finding={checksById.get(fix.relatedCheckId)?.finding}
+                />
               ))}
             </div>
           </section>

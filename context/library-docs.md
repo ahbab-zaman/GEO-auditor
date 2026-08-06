@@ -146,96 +146,66 @@ function parseAiCrawlerAccess(robotsTxt: string | null): {
 
 ---
 
-## OpenRouter API (free model route)
+## Groq Compound + OpenRouter fallback
 
-**Why this provider:** OpenRouter is a single API key over many models, with a free `openrouter/free`
-route. `geminiJson` (reasoning over given text) works fully on the free route. Live web-search
-grounding uses OpenRouter's `web` plugin, which **only works on web-search-capable (paid) models** —
-the free route generally does not support it, in which case the grounded queries throw and the two
-citation pillars report `unavailable` rather than fabricating citations. One `OPENROUTER_API_KEY`
-key, awarded by `OPENROUTER_MODEL` (defaults to `openrouter/free`).
+**Why this provider:** The project now uses `groq/compound` as the primary model. Groq Compound
+handles both plain reasoning and built-in web search, so the audit can answer live questions without
+a separate search model. `openrouter/free` is kept only as a fallback model when Groq fails.
 
-**Check first:** swap `OPENROUTER_MODEL` to a web-search-capable paid route (e.g. `openrouter/auto`)
-to enable the citation pillars. Verify the `plugins` id stays `"web"` against OpenRouter's current
-docs.
+Groq Compound returns search sources through `message.executed_tools[].search_results[]`, which the
+project turns into citation URLs. OpenRouter fallback keeps the old `geminiJson` / `geminiGroundedQuery`
+API surface but now uses a single fallback model instead of rotating through multiple free slugs.
 
-### Client setup — plain JSON mode (no grounding)
+### Client setup
 
-Used for extraction/grading/generation tasks where the model reasons over text it's already been
-given, not tasks that need it to search the live web.
+Used for extraction, grading, and generation tasks where the model reasons over text it has already
+been given.
 
 ```typescript
 // lib/gemini.ts (named historically; exported names unchanged)
 
+const GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions";
+const GROQ_MODEL = "groq/compound";
 const OPENROUTER_CHAT_URL = "https://openrouter.ai/api/v1/chat/completions";
-const MODEL = process.env.OPENROUTER_MODEL ?? "openrouter/free";
+const OPENROUTER_MODEL = "openrouter/free";
 
 export async function geminiJson<T>(prompt: string, temperature = 0): Promise<T> {
-  const response = await fetch(OPENROUTER_CHAT_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      messages: [{ role: "user", content: prompt }],
-    }),
-  });
-  if (!response.ok) {
-    throw new Error(`OpenRouter API error: ${response.status}`);
-  }
-  const data = await response.json();
-  const content: string | undefined = data.choices?.[0]?.message?.content;
-  if (!content) throw new Error("OpenRouter returned no content");
+  // Groq Compound first, OpenRouter fallback on failure.
+  const { content } = await callGroqThenOpenRouter(prompt, { temperature });
   const cleaned = content.trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
   return JSON.parse(cleaned) as T;
 }
 ```
 
 **Rules:**
-- `OPENROUTER_API_KEY` is the only key; `OPENROUTER_MODEL` selects the route (default
-  `openrouter/free`)
-- No guaranteed JSON mode at the transport level, so **always strip markdown fences before
-  `JSON.parse`** and validate the result with `zod` before use — a model can return well-formed-but-
-  wrong-shaped JSON even with a JSON-shaped prompt
+- `GROQ_API_KEY` is the primary key; `OPENROUTER_API_KEY` is the fallback key
+- No extra OpenRouter model rotation — fallback stays on `openrouter/free`
+- Groq Compound web search can run up to the request timeout configured in `lib/gemini.ts`
+- Always strip markdown fences before `JSON.parse` and validate model output with `zod`
 
-### Grounded search query — live AI citation test
+### Grounded search query
 
 ```typescript
 export type GroundedResult = {
-  answerText: string; // the model's raw prose answer, verbatim — shown directly in the report
+  answerText: string;
   citedUrls: string[];
 };
 
 export async function geminiGroundedQuery(prompt: string): Promise<GroundedResult> {
-  // Primary: real citations via Tavily search + the (free) OpenRouter model synthesizes.
-  if (process.env.TAVILY_API_KEY) {
-    const results = await searchTavily(prompt); // POST api.tavily.com/search, bearer TAVILY_API_KEY
-    const { content } = await chatCompletion(groundedPrompt(prompt, results), { temperature: 0.5 });
-    return { answerText: content, citedUrls: results.map((r) => r.url) };
-  }
-  // Fallback: OpenRouter's own "web" plugin — paid online-capable models only
-  // (e.g. OPENROUTER_MODEL=openrouter/auto). Errors -> pillar "unavailable", never fabricated.
-  const { content, citations } = await chatCompletion(prompt, { webSearch: true });
-  return { answerText: content, citedUrls: citations };
+  // Primary: Groq Compound web search with citations from executed_tools.
+  // Fallback: OpenRouter with Tavily search when available, or OpenRouter web-plugin fallback.
+  const result = await callGroqThenOpenRouterGrounded(prompt);
+  return result;
 }
 ```
 
 **Rules:**
-- The citation pillars get REAL citations from **Tavily's free tier** (`TAVILY_API_KEY`, ~1,000
-  req/mo) — the free OpenRouter models can't do web search themselves, so we search separately and
-  hand the model the results + URLs to answer-and-cite. If no `TAVILY_API_KEY`, it falls back to
-  OpenRouter's paid web plugin (only works on online-capable models like `openrouter/auto`).
-- **No web search for the non-grounded calls** — plain `geminiJson` is used everywhere else; search
-  adds latency and burns the free Tavily quota on tasks that don't need it
-- `answerText` is not a nice-to-have — it is stored as-is on the `Evidence` object and rendered
-  verbatim in the report. It is the single most persuasive artifact the tool produces — never discard
-  it in favor of just the citation list
-- **Sequence Stage 3 and Stage 4 calls with a plain `for` loop and `await`, never `Promise.all`** — a
-  slow/backed-up free route is the single most likely way to fail mid-audit; sequential keeps it stable
-- Wrap every call in try/catch — a failure (missing key, quota, timeout) marks that pillar `unavailable`
-  with a human-readable reason, never crashes the audit
+- Groq Compound is the first choice for live search and citations
+- If Groq fails, the fallback path uses OpenRouter free
+- If `TAVILY_API_KEY` is present, fallback grounded queries can use Tavily search + OpenRouter synthesis
+- `answerText` is stored verbatim on the evidence object and rendered directly in the report
+- Keep Stage 3 and Stage 4 sequential at the pipeline layer when they are using the fallback path, so the audit stays stable under slow external services
+- Wrap every call in try/catch — failures should mark a pillar `unavailable`, never crash the audit
 
 ### Resolving grounding redirect URLs to real domains
 

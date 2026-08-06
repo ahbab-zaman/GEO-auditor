@@ -25,8 +25,10 @@ const styles = StyleSheet.create({
     padding: 12,
   },
   summaryTitle: { fontSize: 12, fontWeight: 700, color: "#12141c" },
+  summaryNote: { fontSize: 10, color: "#565b6e", marginTop: 4 },
   summaryList: { marginTop: 8 },
   summaryItem: { fontSize: 10, color: "#565b6e", marginTop: 3 },
+  summaryNested: { marginTop: 4, marginLeft: 14 },
   businessTitle: { fontSize: 24, fontWeight: 700, color: "#12141c", marginTop: 12 },
   businessUrl: { fontSize: 11, color: "#9498a8", marginTop: 2 },
   verdict: {
@@ -105,6 +107,8 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   copyText: { fontFamily: "Courier", fontSize: 9, color: "#e5e7f0" },
+  sectionLabel: { fontSize: 10, fontWeight: 700, color: "#12141c" },
+  sectionValue: { fontSize: 10, color: "#565b6e" },
 });
 
 const SEVERITY_LABEL: Record<CheckResult["severity"], string> = {
@@ -283,7 +287,13 @@ function ScoreSection({ score, maxTotal, pillars }: { score: number; maxTotal: n
   );
 }
 
-function FixSection({ fix }: { fix: Fix }) {
+function FixSection({
+  fix,
+  finding,
+}: {
+  fix: Fix;
+  finding?: string;
+}) {
   return (
     <View style={styles.finding}>
       <Text style={styles.findingTitle}>{fix.title}</Text>
@@ -291,6 +301,7 @@ function FixSection({ fix }: { fix: Fix }) {
         <Text style={styles.pill}>impact: {fix.impact}</Text>
         <Text style={styles.pill}>effort: {fix.effort}</Text>
       </View>
+      {finding && <Text style={styles.bulletText}>- Why it matters here: {finding}</Text>}
       <Text style={styles.bulletText}>- Explanation: {fix.explanation}</Text>
       {fix.copyPasteContent && (
         <View style={styles.copyBlock}>
@@ -317,37 +328,68 @@ export function ReportPdf({ audit }: { audit: Audit }) {
   })();
 
   const pillars = PILLAR_ORDER.map((key) => audit.pillars[key]);
+  const checksById = new Map(pillars.flatMap((pillar) => pillar.checks).map((check) => [check.id, check]));
   const summaryPillars = summarizePillars(audit.pillars);
   const summaryFixes = summarizeFixes(audit);
 
   return (
     <Document>
       <Page size="A4" style={styles.page}>
-        <Text style={styles.docTitle}>GEO Auditor — AI Visibility Report</Text>
+        <Text style={styles.docTitle}>GEO Auditor - AI Visibility Report</Text>
         <Text style={styles.businessTitle}>{audit.businessName}</Text>
         <Text style={styles.businessUrl}>{audit.url}</Text>
 
         <View style={styles.summaryCard}>
-          <Text style={styles.summaryTitle}>Structured summary</Text>
+          <Text style={styles.summaryTitle}>Requirement Summary</Text>
+          <Text style={styles.summaryNote}>
+            This report lists the checks the site passed, the requirements it still misses, and
+            the evidence behind each result.
+          </Text>
           <View style={styles.summaryList}>
-            <Text style={styles.summaryItem}>- businessName: {audit.businessName}</Text>
-            <Text style={styles.summaryItem}>- url: {audit.url}</Text>
             <Text style={styles.summaryItem}>
-              - score: {audit.score.total} / {audit.score.maxTotal}
+              <Text style={styles.sectionLabel}>Business: </Text>
+              <Text style={styles.sectionValue}>{audit.businessName}</Text>
             </Text>
-            <Text style={styles.summaryItem}>- status: {audit.status}</Text>
-            {summaryPillars.map((pillar) => (
-              <Text key={pillar.key} style={styles.summaryItem}>
-                - {pillar.label}: {pillar.score}
-                {pillar.status === "unavailable" && pillar.unavailableReason
-                  ? ` | note: ${pillar.unavailableReason}`
-                  : ""}
+            <Text style={styles.summaryItem}>
+              <Text style={styles.sectionLabel}>Website: </Text>
+              <Text style={styles.sectionValue}>{audit.url}</Text>
+            </Text>
+            <Text style={styles.summaryItem}>
+              <Text style={styles.sectionLabel}>Score: </Text>
+              <Text style={styles.sectionValue}>
+                {audit.score.total} / {audit.score.maxTotal}
               </Text>
-            ))}
+            </Text>
+            <Text style={styles.summaryItem}>
+              <Text style={styles.sectionLabel}>Status: </Text>
+              <Text style={styles.sectionValue}>{audit.status}</Text>
+            </Text>
+            <Text style={styles.summaryItem}>
+              <Text style={styles.sectionLabel}>Pillar scores:</Text>
+            </Text>
+            <View style={styles.summaryNested}>
+              {summaryPillars.map((pillar) => (
+                <Text key={pillar.key} style={styles.summaryItem}>
+                  - {pillar.label}: {pillar.score}
+                  {pillar.status === "unavailable" && pillar.unavailableReason
+                    ? ` | Note: ${pillar.unavailableReason}`
+                    : ""}
+                </Text>
+              ))}
+            </View>
             {summaryFixes.length > 0 && (
-              <Text style={styles.summaryItem}>
-                - topFixes: {summaryFixes.map((fix) => fix.title).join(", ")}
-              </Text>
+              <>
+                <Text style={styles.summaryItem}>
+                  <Text style={styles.sectionLabel}>Requirements not yet met:</Text>
+                </Text>
+                <View style={styles.summaryNested}>
+                  {summaryFixes.map((fix) => (
+                    <Text key={fix.title} style={styles.summaryItem}>
+                      - {fix.title} (impact {fix.impact}, effort {fix.effort})
+                    </Text>
+                  ))}
+                </View>
+              </>
             )}
           </View>
         </View>
@@ -365,9 +407,13 @@ export function ReportPdf({ audit }: { audit: Audit }) {
 
         {audit.fixes.length > 0 && (
           <View style={{ marginTop: 24 }}>
-            <Text style={styles.sectionHeading}>Prioritized fixes</Text>
+            <Text style={styles.sectionHeading}>Requirements not yet met</Text>
             {audit.fixes.map((fix) => (
-              <FixSection key={fix.id} fix={fix} />
+              <FixSection
+                key={fix.id}
+                fix={fix}
+                finding={checksById.get(fix.relatedCheckId)?.finding}
+              />
             ))}
           </View>
         )}

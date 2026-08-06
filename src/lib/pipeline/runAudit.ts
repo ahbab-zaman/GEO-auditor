@@ -12,7 +12,6 @@ import { scrapeSite, ScrapeError } from "@/lib/pipeline/scrape";
 import { runStructuralAnswerability } from "@/lib/pipeline/structuralAnswerability";
 import { runLiveAiCitation } from "@/lib/pipeline/liveAiCitation";
 import { runThirdPartyCorroboration } from "@/lib/pipeline/thirdPartyCorroboration";
-import { generateVerdict } from "@/lib/pipeline/verdict";
 
 // How long one serverless invocation may be "claimed" by a running step before another
 // invocation may retake it. Keep this under the platform maxDuration (60s on Vercel Hobby,
@@ -40,10 +39,6 @@ const STAGE_MIN_MS: Partial<Record<AuditStage, number>> = {
   "third-party": 45_000,
   finalize: 15_000,
 };
-
-// The verdict sentence is nice-to-have, never required (it's nullable in the report). It
-// must never push the finalize step past the budget, so it gets its own short deadline.
-const VERDICT_TIMEOUT_MS = 12_000;
 
 export async function createAudit(url: string, businessName: string): Promise<Audit> {
   const audit: Audit = {
@@ -259,16 +254,11 @@ async function runFinalizeStep(id: string): Promise<void> {
   const score = computeScore(pillars);
   const checks = pillars.flatMap((p) => p.checks);
   const fixes = deriveFixes(checks);
-  const verdict = await withDeadline(
-    generateVerdict(audit.businessName, pillars),
-    VERDICT_TIMEOUT_MS,
-    () => null,
-  );
   await saveAudit({
     ...audit,
     score,
     fixes,
-    verdict,
+    verdict: null,
     status: "complete",
     stage: "done",
     jobLock: null,

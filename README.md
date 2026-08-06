@@ -146,18 +146,19 @@ Key rules:
 | Styling | **Tailwind CSS v4** + shadcn/ui | Tokens via `@theme`, consistent light theme |
 | Validation | **zod** | All untrusted input and model responses validated at runtime |
 | Scraping | **cheerio** | Static fetch only — no headless browser needed |
-| AI provider | **OpenRouter** (raw `fetch`) | One key over many models; free tier supported |
-| Web search citations | **Tavily** (free tier) | Free OpenRouter models can't browse the web, so search is delegated |
+| AI provider | **Groq Compound** primary, **OpenRouter** fallback (raw `fetch`) | Groq handles built-in web search; OpenRouter free is the backup route |
+| Web search citations | **Groq Compound** built-in search, **Tavily** fallback | Groq handles live web queries; Tavily remains as a fallback search path |
 | PDF | **@react-pdf/renderer** | Generate PDF on demand, no browser needed |
 | Animation | **framer-motion** | Purposeful, restrained motion |
 | Storage | **Supabase Postgres** (prod) **or** local JSON files (dev) | See [Storage](#data-model) |
 
 ### The AI provider decision
 
-The tool runs on a **single free API key**. Grounded ("search the live web") calls go through Tavily for
-real result URLs, which the OpenRouter model synthesizes into an answer that cites them. If no
-`TAVILY_API_KEY` is set, it falls back to OpenRouter's paid `web` plugin (online-capable models only),
-else the citation pillars report `unavailable` rather than fabricating citations.
+The tool runs on **Groq Compound first** and falls back to **OpenRouter free** if Groq fails. Groq
+handles the live web search directly and returns cited sources; if Groq is unavailable, grounded
+calls can fall back to Tavily search plus OpenRouter synthesis when `TAVILY_API_KEY` is set. Without
+Groq and without Tavily, the citation pillars may report `unavailable` rather than fabricating
+citations.
 
 This is a deliberate scoping decision: a reviewer can run the whole tool in minutes with no paid
 account provisioning, and one provider means one client, one auth path, one failure mode.
@@ -169,8 +170,9 @@ account provisioning, and one provider means one client, one auth path, one fail
 ### Prerequisites
 
 - Node.js 18+ (Next.js 15 requirement)
-- An [OpenRouter](https://openrouter.ai) API key (`OPENROUTER_API_KEY`) — optionally a
-  [Tavily](https://tavily.com) key for the live-citation pillars
+- A [Groq](https://console.groq.com) API key (`GROQ_API_KEY`)
+- An [OpenRouter](https://openrouter.ai) API key (`OPENROUTER_API_KEY`) for fallback
+- Optionally a [Tavily](https://tavily.com) key for fallback live-citation search
 
 ### Install & run (local, file-based storage — no database required)
 
@@ -180,7 +182,7 @@ npm install
 
 # 2. Configure environment
 cp .env.example .env.local
-#  -> fill in OPENROUTER_API_KEY (required). TAVILY_API_KEY is optional.
+#  -> fill in GROQ_API_KEY (required), OPENROUTER_API_KEY (required). TAVILY_API_KEY is optional.
 
 # 3. Run the dev server
 npm run dev
@@ -207,9 +209,9 @@ All real values live in `.env.local` (gitignored). Documented with placeholders 
 
 | Variable | Required | Description |
 |---|---|---|
-| `OPENROUTER_API_KEY` | ✅ | OpenRouter key for all model calls |
-| `OPENROUTER_MODEL` | ❌ | Model route, e.g. `openai/gpt-oss-20b:free`. Defaults per `lib/gemini.ts`. |
-| `TAVILY_API_KEY` | ❌ | Optional; enables real live search citations. Without it citation pillars may report `unavailable`. |
+| `GROQ_API_KEY` | ✅ | Groq Compound key for primary model calls and live web search |
+| `OPENROUTER_API_KEY` | ✅ | OpenRouter key for fallback model calls |
+| `TAVILY_API_KEY` | ❌ | Optional; enables fallback live search citations when Groq is unavailable |
 | `SUPABASE_URL` | ❌ | Enables Postgres storage (used on Vercel where the FS is read-only). Leave unset for local file storage. |
 | `SUPABASE_SERVICE_ROLE_KEY` | ❌ | Service-role key for Supabase storage. |
 | `AUDIT_JOB_SECRET` | ❌ | Guard on the `/api/jobs/run` self-trigger. |
@@ -387,10 +389,11 @@ The project is designed to run against two host options keyed by filesystem beha
 
 - Free OpenRouter routes can be slow, queued, or rate-limited; a cold start may take 10–25s per live
   call. The tool handles this by degrading to `unavailable` with a reason — it doesn't hang forever.
-- Without `TAVILY_API_KEY` (or a paid web-capable model), the two citation pillars report `unavailable`
-  rather than fabricating citations. That's intentional.
-- Citations come from Tavily search results handed to the model to synthesize — the answer and URLs are
-  real, but corroboration depends on Tavily's coverage of the query.
+- Without `GROQ_API_KEY` and without `TAVILY_API_KEY`, the two citation pillars may report
+  `unavailable` rather than fabricating citations. That's intentional.
+- Citations come from Groq Compound's built-in web search first; when Groq is unavailable and
+  `TAVILY_API_KEY` is set, the fallback path uses Tavily search results handed to OpenRouter to
+  synthesize an answer and cite them.
 
 ---
 

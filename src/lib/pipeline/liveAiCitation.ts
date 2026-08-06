@@ -56,76 +56,91 @@ export async function runLiveAiCitation(
   url: string,
   pages: ScrapedPage[],
 ): Promise<PillarResult> {
-  const homepage = pages.find((page) => page.kind === "homepage");
-  const homepageUrl = homepage?.url ?? url;
-  const homepageText = homepage?.rawTextExcerpt ?? "";
-  const ownDomain = normalizeHostname(new URL(homepageUrl).hostname);
-
-  let queries: GeneratedQuery[];
   try {
-    queries = await generateQueries(businessName, homepageText);
-  } catch (error) {
-    console.error("[pipeline/live-ai-citation] query generation failed", error);
-    return unavailablePillar("Live AI queries could not be generated.");
-  }
+    const homepage = pages.find((page) => page.kind === "homepage");
+    const homepageUrl = homepage?.url ?? url;
+    const homepageText = homepage?.rawTextExcerpt ?? "";
+    const ownDomain = normalizeHostname(new URL(homepageUrl).hostname);
 
-  const cache = new Map<string, string>();
-  const results: QueryResult[] = [];
-
-  // Bounded concurrency (not Promise.all, not pure serial): the 4 live queries are independent
-  // and each is a slow Tavily search + model round-trip, so running them serially is the single
-  // biggest wall-clock cost of the audit. A small in-flight limit keeps the burst low enough to
-  // avoid tripping the free-tier rate limit while cutting that stage's time ~4x.
-  const CONCURRENCY = 4;
-  let cursor = 0;
-  async function runOne(): Promise<void> {
-    const idx = cursor++;
-    if (idx >= queries.length) return;
-    const query = queries[idx];
+    let queries: GeneratedQuery[];
     try {
-      const { answerText, citedUrls } = await geminiGroundedQuery(query.text);
-      const resolvedUrls: string[] = [];
-      for (const uri of citedUrls) {
-        const resolved = await resolveCitationUrl(uri, cache);
-        if (!resolvedUrls.includes(resolved)) resolvedUrls.push(resolved);
-      }
-      results[idx] = {
-        query: query.text,
-        type: query.type,
-        answerText,
-        citedUrls: resolvedUrls,
-        businessCited: resolvedUrls.some(
-          (uri) => normalizeHostname(new URL(uri).hostname) === ownDomain,
-        ),
-      };
+      queries = await generateQueries(businessName, homepageText);
     } catch (error) {
-      console.error(`[pipeline/live-ai-citation] query failed: ${query.text}`, error);
+      console.error(
+        `[pipeline/live-ai-citation] query generation failed: ${describeError(error)}`,
+      );
+      return unavailablePillar("Live AI queries could not be generated.");
     }
+
+    const cache = new Map<string, string>();
+    const results: QueryResult[] = [];
+
+    // Bounded concurrency (not Promise.all, not pure serial): the 4 live queries are independent
+    // and each is a slow Tavily search + model round-trip, so running them serially is the single
+    // biggest wall-clock cost of the audit. A small in-flight limit keeps the burst low enough to
+    // avoid tripping the free-tier rate limit while cutting that stage's time ~4x.
+    const CONCURRENCY = 4;
+    let cursor = 0;
+
+    async function runOne(): Promise<void> {
+      const idx = cursor++;
+      if (idx >= queries.length) return;
+      const query = queries[idx];
+      if (!query) return;
+
+      try {
+        const { answerText, citedUrls } = await geminiGroundedQuery(query.text);
+        const resolvedUrls: string[] = [];
+        for (const uri of citedUrls) {
+          const resolved = await resolveCitationUrl(uri, cache);
+          if (!resolvedUrls.includes(resolved)) resolvedUrls.push(resolved);
+        }
+        results[idx] = {
+          query: query.text,
+          type: query.type,
+          answerText,
+          citedUrls: resolvedUrls,
+          businessCited: resolvedUrls.some(
+            (uri) => normalizeHostname(new URL(uri).hostname) === ownDomain,
+          ),
+        };
+      } catch (error) {
+        console.error(
+          `[pipeline/live-ai-citation] query failed: ${query.text} (${describeError(error)})`,
+        );
+      }
+    }
+
+    await Promise.allSettled(
+      Array.from({ length: Math.min(CONCURRENCY, queries.length) }, () => runOne()),
+    );
+    const completed = results.filter((result): result is QueryResult => Boolean(result));
+
+    if (completed.length === 0) {
+      return unavailablePillar("No live AI answers could be retrieved.");
+    }
+
+    const checks: CheckResult[] = [
+      brandRecallCheck(businessName, completed),
+      domainCitationRateCheck(ownDomain, completed),
+      await descriptionAccuracyCheck(businessName, homepageText, completed),
+    ];
+
+    const pointsEarned = checks.reduce((sum, check) => sum + check.pointsEarned, 0);
+    return {
+      key: "liveAiCitation",
+      label: "Live AI Citation Test",
+      status: "complete",
+      pointsEarned,
+      pointsPossible: PILLAR_MAX.liveAiCitation,
+      checks,
+    };
+  } catch (error) {
+    console.error(
+      `[pipeline/live-ai-citation] unexpected failure: ${describeError(error)}`,
+    );
+    return unavailablePillar("Live AI citation could not be completed.");
   }
-  await Promise.all(
-    Array.from({ length: Math.min(CONCURRENCY, queries.length) }, () => runOne()),
-  );
-  const completed = results.filter(Boolean);
-
-  if (completed.length === 0) {
-    return unavailablePillar("No live AI answers could be retrieved.");
-  }
-
-  const checks: CheckResult[] = [
-    brandRecallCheck(businessName, completed),
-    domainCitationRateCheck(ownDomain, completed),
-    await descriptionAccuracyCheck(businessName, homepageText, completed),
-  ];
-
-  const pointsEarned = checks.reduce((sum, check) => sum + check.pointsEarned, 0);
-  return {
-    key: "liveAiCitation",
-    label: "Live AI Citation Test",
-    status: "complete",
-    pointsEarned,
-    pointsPossible: PILLAR_MAX.liveAiCitation,
-    checks,
-  };
 }
 
 async function generateQueries(
@@ -188,7 +203,7 @@ function brandRecallCheck(
     points === pointsPossible
       ? `AI answers recalled ${businessName} by name in every category query.`
       : points > 0
-        ? `AI answers recalled ${businessName} in ${mentioned.length} of ${considered.length} category queries — some of the time it answers without naming this business.`
+        ? `AI answers recalled ${businessName} in ${mentioned.length} of ${considered.length} category queries - some of the time it answers without naming this business.`
         : `AI answers to category questions did not recall ${businessName} by name at all.`;
 
   return {
@@ -354,4 +369,9 @@ function citationsEvidence(result: QueryResult): Evidence {
     citedUrls: result.citedUrls,
     businessCited: result.businessCited,
   };
+}
+
+function describeError(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return String(error);
 }

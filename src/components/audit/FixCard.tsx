@@ -15,7 +15,13 @@ const EFFORT_STYLES: Record<Fix["effort"], string> = {
   high: "bg-critical-light text-critical-foreground",
 };
 
-export function FixCard({ fix }: { fix: Fix }) {
+export function FixCard({
+  fix,
+  finding,
+}: {
+  fix: Fix;
+  finding?: string;
+}) {
   const [copied, setCopied] = useState(false);
 
   async function copy() {
@@ -41,6 +47,12 @@ export function FixCard({ fix }: { fix: Fix }) {
         </span>
       </div>
       <ul className="mt-3 space-y-2 text-sm leading-6 text-text-secondary">
+        {finding && (
+          <li>
+            <span className="font-semibold text-text-primary">Why it matters here:</span>{" "}
+            {finding}
+          </li>
+        )}
         <li>
           <span className="font-semibold text-text-primary">Explanation:</span> {fix.explanation}
         </li>

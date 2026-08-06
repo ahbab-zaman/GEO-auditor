@@ -178,7 +178,7 @@ Point allocation (see project-overview.md for pillar rationale):
 | Live AI Citation Test | 45 | Brand recall across category queries (15), Own-domain citation rate (20), AI description accuracy (10) |
 | Third-Party Corroboration | 20 | External source count found (0/2/3+ tiers → 0/10/20) |
 
-If a pillar is `unavailable` (e.g. Gemini API failed or hit a rate limit for this run), its `pointsPossible` is
+If a pillar is `unavailable` (e.g. Groq or OpenRouter failed or hit a rate limit for this run), its `pointsPossible` is
 still counted toward `maxTotal` but `pointsEarned` is 0, and the report visibly states the pillar
 could not be completed and why — never silently dropped from the denominator.
 
@@ -190,13 +190,14 @@ could not be completed and why — never silently dropped from the denominator.
 |---|---|---|
 | Target website (fetch + cheerio) | Stage 1 scrape | If homepage fetch fails, audit fails entirely — nothing to score |
 | `{url}/robots.txt` | AI crawler access check | Missing robots.txt = treated as "all crawlers allowed" (correct default), not an error |
-| OpenRouter (`openrouter/free` default, no web plugin) | Direct-answer clarity grading, query generation, verdict generation | Check/stage marked unavailable, rest of pipeline still completes |
-| Tavily search (free tier) + OpenRouter model synthesizes | Live AI citation test + third-party corroboration | Pillar marked unavailable, rest of audit still completes |
+| Groq Compound (`groq/compound`) | Direct-answer clarity grading, query generation, verdict generation, live web search | Check/stage marked unavailable, rest of pipeline still completes |
+| OpenRouter (`openrouter/free`) fallback | Direct-answer clarity grading, query generation, verdict generation | Check/stage marked unavailable, rest of pipeline still completes |
+| Tavily search (free tier) + OpenRouter fallback synthesizes | Fallback live AI citation test + third-party corroboration | Pillar marked unavailable, rest of audit still completes |
 
-Single provider by design for reasoning (one `OPENROUTER_API_KEY`); real search citations come from
-Tavily (`TAVILY_API_KEY`, free tier) because free OpenRouter models cannot do web search. Without a
-`TAVILY_API_KEY`, the citation pillars fall back to OpenRouter's paid `web` plugin (online-capable
-models only) or report `unavailable`.
+Groq Compound is the primary reasoning and live-search path (`GROQ_API_KEY`); OpenRouter free
+(`OPENROUTER_API_KEY`) is the fallback reasoning path. When Groq is unavailable, citation pillars can
+still use Tavily (`TAVILY_API_KEY`, free tier) plus OpenRouter synthesis. Without Groq and without
+Tavily, the citation pillars report `unavailable` rather than fabricating citations.
 
 **Rate limiting / latency:** OpenRouter free routes can be slow and occasionally rate-limit. Stage 3 and
 Stage 4 calls are executed **sequentially, not in parallel** (`for` loop with `await`, not `Promise.all`)
@@ -213,7 +214,7 @@ it needs from this alone — every path below either already exists at the end o
 
 ```
 geo-auditor/
-├── .env.local                        → OPENROUTER_API_KEY, OPENROUTER_MODEL, TAVILY_API_KEY (gitignored)
+├── .env.local                        → GROQ_API_KEY, OPENROUTER_API_KEY, TAVILY_API_KEY (gitignored)
 ├── .env.example                      → checked in, documents required vars with no real values
 ├── .gitignore                        → node_modules, .next, .env.local, /data/audits/*.json
 ├── next.config.ts
@@ -246,7 +247,7 @@ geo-auditor/
 │   │   ├── verdict.ts                → Stage 5, one-sentence summary generation       [build-plan 12]
 │   │   ├── score.ts                  → Stage 6, pure scoring function                 [build-plan 12]
 │   │   └── fixes.ts                  → derives Fix[] from CheckResult[]               [build-plan 13]
-│   ├── gemini.ts                     → Gemini client — geminiJson() + geminiGroundedQuery() [build-plan 08]
+│   ├── gemini.ts                     → AI client — geminiJson() + geminiGroundedQuery() [build-plan 08]
 │   ├── robots.ts                     → robots.txt fetch + AI-bot parsing              [build-plan 04]
 │   ├── storage.ts                    → read/write /data/audits/{id}.json              [build-plan 01]
 │   └── utils.ts                      → POINTS constants, getSeverityColor(), effort lookup table [build-plan 01]

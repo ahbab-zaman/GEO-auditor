@@ -190,11 +190,11 @@ exactly what to provide — this is what makes the "under 5 minutes to run" requ
 
 | Variable | Used In |
 |---|---|
-| `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, `TAVILY_API_KEY` | `lib/gemini.ts` — AI reasoning via OpenRouter (default `openai/gpt-oss-20b:free`, auto-rotates on 404); real search citations via Tavily free tier |
+| `GROQ_API_KEY`, `OPENROUTER_API_KEY`, `TAVILY_API_KEY` | `lib/gemini.ts` — AI reasoning via Groq Compound first, OpenRouter free fallback; live search citations via Groq built-in search or Tavily fallback |
 
-Only one AI provider key exists in this project by design. Do not add `GEMINI_API_KEY`, `OPENAI_API_KEY`,
-`PERPLEXITY_API_KEY`, or any other AI provider key without first updating library-docs.md and
-architecture.md's integrations table.
+Two AI provider keys exist in this project by design: `GROQ_API_KEY` and `OPENROUTER_API_KEY`.
+Do not add `GEMINI_API_KEY`, `OPENAI_API_KEY`, `PERPLEXITY_API_KEY`, or any other AI provider key
+without first updating library-docs.md and architecture.md's integrations table.
 
 ---
 
@@ -267,9 +267,9 @@ Approved dependencies for this project:
 - `shadcn/ui` components — UI primitives
 - `nanoid` — audit id generation
 
-No AI provider SDK is installed — OpenRouter is called via plain `fetch` in `lib/gemini.ts` (see
-library-docs.md). This keeps the dependency footprint minimal and avoids an SDK version treadmill for
-a single, narrow usage pattern.
+No AI provider SDK is installed — Groq and OpenRouter are both called via plain `fetch` in
+`lib/gemini.ts` (see library-docs.md). This keeps the dependency footprint minimal and avoids an SDK
+version treadmill for a narrow usage pattern.
 
 Do not install any other packages without updating this list first. In particular: no Playwright/
 Puppeteer for scraping (static fetch + cheerio is sufficient for the target businesses and keeps setup
