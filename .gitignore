@@ -12,6 +12,13 @@
 .DS_Store
 *.pem
 
+# local agent/context files
+.agent/
+context/
+AGENT.md
+memory.md
+script.md
+
 # debug
 npm-debug.log*
 yarn-debug.log*
