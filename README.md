@@ -19,6 +19,7 @@ GEO Auditor tells a business owner one thing no traditional SEO tool can: whethe
 - [Scoring](#scoring)
 - [Tech stack](#tech-stack)
 - [Getting started](#getting-started)
+- [Testing and verification](#testing-and-verification)
 - [Environment variables](#environment-variables)
 - [API reference](#api-reference)
 - [Data model](#data-model)
@@ -192,7 +193,7 @@ npm run dev
 That's it. Without Supabase variables set, audits persist to `src/data/audits/*.json` on the local
 filesystem, so `next dev` works with no database at all.
 
-### Production-grade commands
+### Validation commands
 
 ```bash
 npm run dev     # start the dev server
@@ -200,6 +201,22 @@ npm run build   # production build
 npm run start   # run the production build
 npm run lint    # lint (eslint)
 ```
+
+## Testing and verification
+
+There is no automated test suite in `package.json` yet, so the current verification path is:
+
+1. Run `npm run lint` to catch syntax, style, and import issues.
+2. Run `npm run build` to confirm the app compiles for production.
+3. Start the app with `npm run dev`.
+4. Open `http://localhost:3000`.
+5. Enter a business name and website URL in the audit form, then click `Run Audit`.
+6. Confirm the app navigates to `/audit/[id]`, the progress state advances, and the final report
+   renders when the audit completes.
+
+If you want to validate the storage fallback, leave `SUPABASE_URL` and
+`SUPABASE_SERVICE_ROLE_KEY` unset and confirm the audit JSON is written to
+`src/data/audits/{id}.json`.
 
 ---
 
